@@ -1,0 +1,637 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Minnie Dash 🐾</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    background: radial-gradient(ellipse at top, #1a1a3e 0%, #0d0d1f 100%);
+    display: flex; flex-direction: column; align-items: center;
+    justify-content: center; min-height: 100vh;
+    font-family: 'Segoe UI', Arial, sans-serif;
+  }
+  h1 {
+    color: #f9c84a; margin-bottom: 10px; font-size: 2.2rem;
+    letter-spacing: 3px; text-shadow: 0 2px 12px #f9c84a88;
+  }
+  #gameCanvas {
+    border: 3px solid #c8860a; border-radius: 8px;
+    box-shadow: 0 0 32px #c8860a55; display: block;
+  }
+  #ui {
+    color: #f9c84a; margin-top: 10px; font-size: 1.05rem;
+    letter-spacing: 1px; display: flex; gap: 24px;
+  }
+  #ui span { color: #fff; }
+  #message {
+    color: #ccc; font-size: 1rem; margin-top: 8px; height: 24px;
+    text-align: center; letter-spacing: 1px;
+  }
+</style>
+</head>
+<body>
+<h1>🐾 Minnie Dash</h1>
+<canvas id="gameCanvas" width="920" height="320"></canvas>
+<div id="ui">
+  Treats: <span id="score">0</span> / 50
+  &nbsp;|&nbsp; Best: <span id="best">0</span>
+  &nbsp;|&nbsp; Lives: <span id="lives">❤️❤️❤️</span>
+</div>
+<div id="message">Press SPACE or click to start</div>
+
+<script>
+const canvas = document.getElementById('gameCanvas');
+const ctx    = canvas.getContext('2d');
+
+// ── Constants ────────────────────────────────────────────────────────────
+const GY      = 262;   // ground Y
+const MINNIE_X = 88;
+const WIN_SCORE = 50;
+const GRAVITY   = 0.56;
+const JUMP_V    = -13;
+
+// ── Minnie's colours (matched to photos) ─────────────────────────────────
+const C = {
+  // coat: warm fawn/tan
+  coat:      '#d4a05a',
+  coatMid:   '#c8924a',
+  coatDark:  '#9a6430',
+  coatLight: '#e8c080',
+  // chest / muzzle: creamy white
+  cream:     '#f2e4c4',
+  // collar: red with darker stitching
+  collar:    '#cc2222',
+  collarDark:'#881111',
+  // eyes: large dark brown
+  eye:       '#1a0a00',
+  eyeShine:  '#ffffff',
+  eyeRim:    '#3a1a00',
+  // nose: dark brown/black
+  nose:      '#1a0800',
+  // tongue: bright pink
+  tongue:    '#e8307a',
+  // ground
+  ground:    '#5a8c3a',
+  groundEdge:'#3c6028',
+  dirt:      '#8B6610',
+  // sky
+  skyTop:    '#5baade',
+  skyBot:    '#c6e8ff',
+  // obstacles
+  obsGreen:  '#2a7a2a',
+  obsGreenD: '#1a5a1a',
+  obsGrey:   '#888888',
+  obsGreyL:  '#aaaaaa',
+  obsBrown:  '#8B5E3C',
+  obsBrownL: '#c8904a',
+  // treat
+  treatA:    '#d4824a',
+  treatB:    '#f0b472',
+  treatC:    '#7a3d18',
+};
+
+// ── State ────────────────────────────────────────────────────────────────
+let state, score, best, lives, speed, frame, obstacles, treats, clouds, trees, particles;
+let nextObs, nextTreat, canDbl;
+
+const minnie = {
+  x: MINNIE_X, y: GY, w: 50, h: 34,
+  vy: 0, onGround: true, invincible: 0,
+};
+
+function init() {
+  state      = 'idle';
+  score      = 0;
+  lives      = 3;
+  speed      = 4;
+  frame      = 0;
+  obstacles  = [];
+  treats     = [];
+  particles  = [];
+  clouds     = makeClouds();
+  trees      = makeTrees();
+  nextObs    = 100;
+  nextTreat  = 65;
+  canDbl     = true;
+  minnie.y   = GY - minnie.h;
+  minnie.vy  = 0;
+  minnie.onGround   = true;
+  minnie.invincible = 0;
+  updateHUD();
+  setMsg('Press SPACE or click to start');
+}
+
+// ── Input ────────────────────────────────────────────────────────────────
+function doJump() {
+  if (minnie.onGround) {
+    minnie.vy = JUMP_V;
+    minnie.onGround = false;
+    canDbl = true;
+    dustPuff(minnie.x + minnie.w / 2, minnie.y + minnie.h, 6, '#c8903a');
+  } else if (canDbl) {
+    minnie.vy = JUMP_V * 0.82;
+    canDbl = false;
+    dustPuff(minnie.x + minnie.w / 2, minnie.y + minnie.h, 5, '#d4a05a');
+  }
+}
+
+function doAction() {
+  if (state === 'idle' || state === 'dead' || state === 'win') {
+    if (state !== 'idle') init();
+    state = 'running';
+    setMsg('');
+  } else if (state === 'running') {
+    doJump();
+  }
+}
+
+document.addEventListener('keydown', e => {
+  if (e.code === 'Space' || e.code === 'ArrowUp') { e.preventDefault(); doAction(); }
+});
+canvas.addEventListener('click', doAction);
+
+// ── HUD ──────────────────────────────────────────────────────────────────
+function updateHUD() {
+  document.getElementById('score').textContent = score;
+  document.getElementById('best').textContent  = best || 0;
+  const hearts = '❤️'.repeat(Math.max(lives, 0)) + '🖤'.repeat(Math.max(3 - lives, 0));
+  document.getElementById('lives').textContent = hearts;
+}
+function setMsg(t) { document.getElementById('message').textContent = t; }
+
+// ── Particles ────────────────────────────────────────────────────────────
+function dustPuff(x, y, n, col) {
+  for (let i = 0; i < n; i++) particles.push({
+    x, y, vx: (Math.random() - .5) * 3, vy: -Math.random() * 2,
+    life: 18, maxLife: 18, r: 3, col,
+  });
+}
+function burstPuff(x, y, col) {
+  for (let i = 0; i < 10; i++) {
+    const a = (i / 10) * Math.PI * 2;
+    particles.push({
+      x, y, vx: Math.cos(a) * 2.8, vy: Math.sin(a) * 2.8,
+      life: 28, maxLife: 28, r: 4, col,
+    });
+  }
+}
+function hitPuff(x, y) {
+  for (let i = 0; i < 12; i++) particles.push({
+    x, y, vx: (Math.random() - .5) * 6, vy: -Math.random() * 5,
+    life: 30, maxLife: 30, r: 4, col: '#e44',
+  });
+}
+
+// ── Obstacles ────────────────────────────────────────────────────────────
+const OBS_TYPES = [
+  { label: 'cactus', w: 24, h: 42 },
+  { label: 'rock',   w: 36, h: 26 },
+  { label: 'fence',  w: 20, h: 54 },
+  { label: 'log',    w: 50, h: 22 },
+  { label: 'hydrant',w: 24, h: 36 },
+];
+
+function spawnObs() {
+  const t = OBS_TYPES[Math.floor(Math.random() * OBS_TYPES.length)];
+  obstacles.push({ ...t, x: canvas.width + 20, y: GY - t.h });
+}
+
+function drawObs(o) {
+  ctx.save();
+  if (o.label === 'cactus') {
+    ctx.fillStyle = C.obsGreen;
+    ctx.fillRect(o.x + 8, o.y, 8, o.h);
+    ctx.fillRect(o.x, o.y + 14, o.w, 8);
+    ctx.fillStyle = C.obsGreenD;
+    ctx.fillRect(o.x + 9, o.y + 1, 6, o.h - 1);
+    ctx.fillRect(o.x + 1, o.y + 15, o.w - 2, 6);
+  } else if (o.label === 'rock') {
+    ctx.fillStyle = C.obsGrey;
+    ctx.beginPath();
+    ctx.ellipse(o.x + o.w/2, o.y + o.h/2 + 4, o.w/2, o.h/2, 0, 0, Math.PI*2);
+    ctx.fill();
+    ctx.fillStyle = C.obsGreyL;
+    ctx.beginPath();
+    ctx.ellipse(o.x + o.w/2 - 5, o.y + o.h/2, o.w/3, o.h/3, -.3, 0, Math.PI*2);
+    ctx.fill();
+  } else if (o.label === 'fence') {
+    ctx.fillStyle = C.obsBrownL;
+    for (let i = 0; i < 2; i++) {
+      const px = o.x + i * 11;
+      ctx.fillRect(px, o.y, 7, o.h);
+      ctx.beginPath(); ctx.moveTo(px, o.y); ctx.lineTo(px+3, o.y-7); ctx.lineTo(px+6, o.y); ctx.closePath(); ctx.fill();
+    }
+    ctx.fillStyle = C.obsBrown;
+    ctx.fillRect(o.x, o.y + 12, o.w, 5);
+    ctx.fillRect(o.x, o.y + 30, o.w, 5);
+  } else if (o.label === 'log') {
+    ctx.fillStyle = C.obsBrown;
+    ctx.beginPath(); ctx.ellipse(o.x+o.w/2, o.y+o.h/2, o.w/2, o.h/2, 0, 0, Math.PI*2); ctx.fill();
+    ctx.fillStyle = C.obsBrownL;
+    ctx.beginPath(); ctx.ellipse(o.x+o.w/2, o.y+o.h/2, o.w/2-5, o.h/2-5, 0, 0, Math.PI*2); ctx.fill();
+    ctx.strokeStyle = C.obsBrown; ctx.lineWidth = 1;
+    for (let r = 5; r < o.w/2-5; r += 5) {
+      ctx.beginPath(); ctx.ellipse(o.x+o.w/2, o.y+o.h/2, r, r*.4, 0, 0, Math.PI*2); ctx.stroke();
+    }
+  } else if (o.label === 'hydrant') {
+    // fire hydrant
+    ctx.fillStyle = '#dd2222';
+    ctx.fillRect(o.x + 4, o.y + 10, 16, o.h - 10);
+    ctx.fillRect(o.x, o.y + 16, 24, 8);
+    ctx.fillRect(o.x + 7, o.y, 10, 12);
+    ctx.fillStyle = '#992222';
+    ctx.fillRect(o.x + 5, o.y + 11, 14, o.h - 12);
+    ctx.fillStyle = '#ffcc00';
+    ctx.beginPath(); ctx.arc(o.x+12, o.y+8, 4, 0, Math.PI*2); ctx.fill();
+  }
+  ctx.restore();
+}
+
+// ── Dog Treats ───────────────────────────────────────────────────────────
+// Bone-shaped treat drawn with canvas paths
+function spawnTreat() {
+  const heights = [GY - 18, GY - 54, GY - 92];
+  treats.push({
+    x: canvas.width + 16,
+    y: heights[Math.floor(Math.random() * heights.length)],
+    w: 28, h: 14,
+    angle: 0,
+    collected: false,
+  });
+}
+
+function drawTreat(t, f) {
+  const bob = Math.sin(f * 0.06 + t.x * 0.015) * 3;
+  const cx = t.x + t.w / 2;
+  const cy = t.y + t.h / 2 + bob;
+  t.angle = Math.sin(f * 0.04) * 0.18;
+
+  ctx.save();
+  ctx.translate(cx, cy);
+  ctx.rotate(t.angle);
+
+  const bw = t.w / 2;     // half bone length
+  const bh = t.h / 2 - 2; // shaft half-height
+  const nr = 5;            // nub radius
+
+  // shadow
+  ctx.fillStyle = 'rgba(0,0,0,0.18)';
+  ctx.beginPath();
+  ctx.ellipse(0, bh + 4, bw + nr, 3, 0, 0, Math.PI*2);
+  ctx.fill();
+
+  // bone shaft
+  ctx.fillStyle = C.treatB;
+  ctx.beginPath();
+  ctx.roundRect(-bw, -bh, bw*2, bh*2, 3);
+  ctx.fill();
+
+  // four end nubs
+  const nubs = [[-bw, -bh], [-bw, bh], [bw, -bh], [bw, bh]];
+  nubs.forEach(([nx, ny]) => {
+    ctx.beginPath();
+    ctx.arc(nx, ny, nr, 0, Math.PI*2);
+    ctx.fillStyle = C.treatA;
+    ctx.fill();
+    // shine
+    ctx.beginPath();
+    ctx.arc(nx - 1.5, ny - 1.5, 1.5, 0, Math.PI*2);
+    ctx.fillStyle = C.treatB;
+    ctx.fill();
+  });
+
+  // centre stripe
+  ctx.fillStyle = C.treatC;
+  ctx.fillRect(-bw + 4, -2, (bw - 4) * 2, 4);
+
+  ctx.restore();
+}
+
+// ── Clouds & Trees ───────────────────────────────────────────────────────
+function makeClouds() {
+  return Array.from({length: 6}, (_, i) => ({
+    x: 80 + i * 160 + Math.random() * 60,
+    y: 25 + Math.random() * 55,
+    w: 65 + Math.random() * 55,
+    spd: .35 + Math.random() * .3,
+  }));
+}
+function drawCloud(c) {
+  ctx.fillStyle = 'rgba(255,255,255,0.82)';
+  ctx.beginPath();
+  ctx.arc(c.x, c.y, c.w*.30, 0, Math.PI*2);
+  ctx.arc(c.x + c.w*.28, c.y - c.w*.12, c.w*.22, 0, Math.PI*2);
+  ctx.arc(c.x + c.w*.52, c.y, c.w*.27, 0, Math.PI*2);
+  ctx.fill();
+}
+function makeTrees() {
+  return Array.from({length: 9}, (_, i) => ({
+    x: 50 + i * 110 + Math.random() * 40,
+    h: 38 + Math.random() * 28,
+    spd: 1.4,
+  }));
+}
+function drawTree(t) {
+  ctx.fillStyle = '#7a4a24';
+  ctx.fillRect(t.x - 4, GY - t.h * .38, 8, t.h * .38);
+  ctx.fillStyle = '#2d6a1f';
+  ctx.beginPath(); ctx.moveTo(t.x, GY-t.h); ctx.lineTo(t.x-18, GY-t.h*.42); ctx.lineTo(t.x+18, GY-t.h*.42); ctx.closePath(); ctx.fill();
+  ctx.beginPath(); ctx.moveTo(t.x, GY-t.h*1.18); ctx.lineTo(t.x-13, GY-t.h*.68); ctx.lineTo(t.x+13, GY-t.h*.68); ctx.closePath(); ctx.fill();
+}
+
+// ── Ground ───────────────────────────────────────────────────────────────
+function drawGround() {
+  ctx.fillStyle = C.ground;
+  ctx.fillRect(0, GY, canvas.width, canvas.height - GY);
+  ctx.fillStyle = C.groundEdge;
+  ctx.fillRect(0, GY, canvas.width, 5);
+  ctx.fillStyle = C.dirt;
+  ctx.fillRect(0, GY + 14, canvas.width, canvas.height - GY - 14);
+}
+
+// ── Minnie ───────────────────────────────────────────────────────────────
+function drawMinnie(f) {
+  if (minnie.invincible > 0 && Math.floor(minnie.invincible / 4) % 2 === 0) return;
+
+  const x = minnie.x, y = minnie.y;
+  const run = minnie.onGround;
+  const legSwing  = run ? Math.sin(f * 0.38) * 6  : 0;
+  const tailWag   = Math.sin(f * 0.28) * 10;
+  const bodyBob   = run ? Math.sin(f * 0.38 * 2) * 1 : 0;
+
+  ctx.save();
+
+  // ── Tail (curled up like the photos) ──
+  ctx.strokeStyle = C.coatDark;
+  ctx.lineWidth = 5;
+  ctx.lineCap = 'round';
+  ctx.beginPath();
+  ctx.moveTo(x + 4, y + 16 + bodyBob);
+  ctx.bezierCurveTo(
+    x - 10, y + 4 + tailWag,
+    x - 18, y - 10 + tailWag,
+    x - 8,  y - 14 + tailWag
+  );
+  ctx.stroke();
+  // lighter highlight on tail
+  ctx.strokeStyle = C.coat;
+  ctx.lineWidth = 2;
+  ctx.stroke();
+
+  // ── Body ──
+  ctx.fillStyle = C.coat;
+  ctx.beginPath();
+  ctx.ellipse(x + 25, y + 18 + bodyBob, 22, 14, 0, 0, Math.PI*2);
+  ctx.fill();
+
+  // chest/belly lighter patch
+  ctx.fillStyle = C.cream;
+  ctx.beginPath();
+  ctx.ellipse(x + 24, y + 22 + bodyBob, 12, 8, 0, 0, Math.PI*2);
+  ctx.fill();
+
+  // ── Legs (4 stubby legs) ──
+  ctx.fillStyle = C.coatDark;
+  const legY = y + 26 + bodyBob;
+  ctx.fillRect(x + 8,  legY + legSwing,      7, 10);
+  ctx.fillRect(x + 18, legY - legSwing,      7, 10);
+  ctx.fillRect(x + 30, legY + legSwing * .7, 7, 10);
+  ctx.fillRect(x + 40, legY - legSwing * .7, 7, 10);
+
+  // paws (cream)
+  ctx.fillStyle = C.cream;
+  [[x+8, legY+legSwing+8], [x+18, legY-legSwing+8],
+   [x+30, legY+legSwing*.7+8], [x+40, legY-legSwing*.7+8]].forEach(([px, py]) => {
+    ctx.beginPath(); ctx.ellipse(px+3.5, py+2, 4.5, 3, 0, 0, Math.PI*2); ctx.fill();
+  });
+
+  // ── HEAD ──
+  // head base (fawn)
+  ctx.fillStyle = C.coat;
+  ctx.beginPath();
+  ctx.ellipse(x + 43, y + 10, 13, 11, 0.15, 0, Math.PI*2);
+  ctx.fill();
+
+  // ── Floppy ears ──
+  // left ear (behind head)
+  ctx.fillStyle = C.coatDark;
+  ctx.beginPath();
+  ctx.ellipse(x + 34, y + 8, 7, 11, -0.4, 0, Math.PI*2);
+  ctx.fill();
+  // right ear (same floppy style — in the photos both ears are similar)
+  ctx.fillStyle = C.coatMid;
+  ctx.beginPath();
+  ctx.ellipse(x + 50, y + 5, 6, 9, 0.3, 0, Math.PI*2);
+  ctx.fill();
+
+  // ── Muzzle (creamy/lighter patch) ──
+  ctx.fillStyle = C.cream;
+  ctx.beginPath();
+  ctx.ellipse(x + 52, y + 14, 8, 6, 0.1, 0, Math.PI*2);
+  ctx.fill();
+
+  // ── Nose (dark, slightly wider) ──
+  ctx.fillStyle = C.nose;
+  ctx.beginPath();
+  ctx.ellipse(x + 56, y + 12, 4, 3, 0, 0, Math.PI*2);
+  ctx.fill();
+  // nose highlight
+  ctx.fillStyle = 'rgba(255,255,255,0.25)';
+  ctx.beginPath();
+  ctx.ellipse(x + 55, y + 11, 1.5, 1, 0, 0, Math.PI*2);
+  ctx.fill();
+
+  // ── Eyes (large, dark, expressive — Minnie's most distinctive feature) ──
+  // eye socket rim (darker ring like in the photos)
+  ctx.fillStyle = C.eyeRim;
+  ctx.beginPath(); ctx.arc(x + 44, y + 7, 5.5, 0, Math.PI*2); ctx.fill();
+  ctx.beginPath(); ctx.arc(x + 44, y + 7, 4.2, 0, Math.PI*2);
+  ctx.fillStyle = C.eye; ctx.fill();
+  // large shine — gives that big-eyed Minnie look
+  ctx.fillStyle = C.eyeShine;
+  ctx.beginPath(); ctx.arc(x + 42.5, y + 5.5, 1.8, 0, Math.PI*2); ctx.fill();
+  ctx.beginPath(); ctx.arc(x + 45.5, y + 8, 0.9, 0, Math.PI*2); ctx.fill();
+
+  // ── Collar (red, like in all the photos) ──
+  ctx.strokeStyle = C.collar;
+  ctx.lineWidth = 4;
+  ctx.beginPath();
+  ctx.arc(x + 36, y + 20, 10, -0.8, 0.8);
+  ctx.stroke();
+  // collar detail dots
+  ctx.fillStyle = C.collarDark;
+  for (let i = 0; i < 3; i++) {
+    const a = -0.4 + i * 0.4;
+    ctx.beginPath();
+    ctx.arc(x + 36 + Math.cos(a) * 10, y + 20 + Math.sin(a) * 10, 1.5, 0, Math.PI*2);
+    ctx.fill();
+  }
+  // tag
+  ctx.fillStyle = '#dddddd';
+  ctx.beginPath();
+  ctx.arc(x + 36 + Math.cos(0.7) * 10, y + 20 + Math.sin(0.7) * 10 + 4, 3, 0, Math.PI*2);
+  ctx.fill();
+
+  // ── Tongue (hanging out, as in most of the photos) ──
+  ctx.fillStyle = C.tongue;
+  ctx.beginPath();
+  ctx.ellipse(x + 53, y + 20, 3.5, 5, 0.1, 0, Math.PI*2);
+  ctx.fill();
+  // tongue line
+  ctx.strokeStyle = '#c0205a';
+  ctx.lineWidth = 1;
+  ctx.beginPath(); ctx.moveTo(x+53, y+17); ctx.lineTo(x+53, y+24); ctx.stroke();
+
+  ctx.restore();
+}
+
+// ── Sky ──────────────────────────────────────────────────────────────────
+function drawSky() {
+  const g = ctx.createLinearGradient(0, 0, 0, GY);
+  g.addColorStop(0, C.skyTop); g.addColorStop(1, C.skyBot);
+  ctx.fillStyle = g; ctx.fillRect(0, 0, canvas.width, GY);
+}
+
+// ── Overlay ──────────────────────────────────────────────────────────────
+function drawOverlay(title, sub) {
+  ctx.fillStyle = 'rgba(0,0,0,0.5)';
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+  ctx.textAlign = 'center';
+  ctx.fillStyle = '#f9c84a';
+  ctx.font = 'bold 50px Segoe UI, Arial';
+  ctx.fillText(title, canvas.width/2, canvas.height/2 - 18);
+  ctx.fillStyle = '#ffffff';
+  ctx.font = '22px Segoe UI, Arial';
+  ctx.fillText(sub, canvas.width/2, canvas.height/2 + 24);
+  ctx.textAlign = 'left';
+}
+
+// ── Collision ────────────────────────────────────────────────────────────
+function overlaps(ax, ay, aw, ah, bx, by, bw, bh) {
+  const p = 8;
+  return ax+p < bx+bw-p && ax+aw-p > bx+p &&
+         ay+p < by+bh-p && ay+ah-p > by+p;
+}
+
+// ── Main loop ────────────────────────────────────────────────────────────
+function loop() {
+  requestAnimationFrame(loop);
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  drawSky();
+
+  // clouds
+  clouds.forEach(c => {
+    drawCloud(c);
+    if (state === 'running') { c.x -= c.spd; if (c.x + 130 < 0) c.x = canvas.width + 30; }
+  });
+  // trees
+  trees.forEach(t => {
+    drawTree(t);
+    if (state === 'running') { t.x -= t.spd; if (t.x + 30 < 0) t.x = canvas.width + 20; }
+  });
+
+  drawGround();
+
+  // ── Running logic ──
+  if (state === 'running') {
+    frame++;
+    speed = 4 + Math.min(score * 0.09, 9);
+
+    // spawn obstacles
+    if (--nextObs <= 0) {
+      spawnObs();
+      nextObs = Math.max(Math.floor(85 + Math.random()*60 - score*.35), 44);
+    }
+    // spawn treats
+    if (--nextTreat <= 0) {
+      spawnTreat();
+      nextTreat = Math.floor(50 + Math.random()*40);
+    }
+
+    // physics
+    minnie.vy += GRAVITY;
+    minnie.y  += minnie.vy;
+    if (minnie.y >= GY - minnie.h) {
+      minnie.y = GY - minnie.h;
+      minnie.vy = 0;
+      minnie.onGround = true;
+      canDbl = true;
+    }
+
+    // obstacles
+    obstacles = obstacles.filter(o => o.x + o.w > -20);
+    obstacles.forEach(o => {
+      o.x -= speed;
+      drawObs(o);
+      if (minnie.invincible <= 0 &&
+          overlaps(minnie.x, minnie.y, minnie.w, minnie.h, o.x, o.y, o.w, o.h)) {
+        lives--;
+        minnie.invincible = 90;
+        hitPuff(minnie.x + minnie.w/2, minnie.y + minnie.h/2);
+        updateHUD();
+        if (lives <= 0) {
+          state = 'dead';
+          if (score > (best||0)) best = score;
+          updateHUD();
+        }
+      }
+    });
+
+    // treats
+    treats = treats.filter(t => t.x > -30 && !t.collected);
+    treats.forEach(t => {
+      t.x -= speed * .88;
+      drawTreat(t, frame);
+      if (overlaps(minnie.x, minnie.y, minnie.w, minnie.h,
+                   t.x, t.y, t.w, t.h)) {
+        t.collected = true;
+        score++;
+        burstPuff(t.x + t.w/2, t.y + t.h/2, C.treatA);
+        updateHUD();
+        if (score >= WIN_SCORE) {
+          state = 'win';
+          if (score > (best||0)) best = score;
+          updateHUD();
+        }
+      }
+    });
+
+    if (minnie.invincible > 0) minnie.invincible--;
+  }
+
+  // ── Particles ──
+  particles = particles.filter(p => p.life > 0);
+  particles.forEach(p => {
+    ctx.globalAlpha = p.life / p.maxLife;
+    ctx.fillStyle = p.col;
+    ctx.beginPath(); ctx.arc(p.x, p.y, p.r, 0, Math.PI*2); ctx.fill();
+    p.x += p.vx; p.y += p.vy; p.vy += .1; p.life--;
+  });
+  ctx.globalAlpha = 1;
+
+  drawMinnie(frame);
+
+  // ── Overlays ──
+  if (state === 'win')  drawOverlay('You Win! 🐾', `${score} treats collected!  •  SPACE to play again`);
+  if (state === 'dead') drawOverlay('Woof… Try again!', `Score: ${score}  •  SPACE to retry`);
+  if (state === 'idle') {
+    ctx.fillStyle = 'rgba(0,0,0,0.35)';
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    ctx.textAlign = 'center';
+    ctx.fillStyle = '#f9c84a';
+    ctx.font = 'bold 34px Segoe UI, Arial';
+    ctx.fillText("Help Minnie collect 50 treats!", canvas.width/2, canvas.height/2 - 14);
+    ctx.fillStyle = '#fff';
+    ctx.font = '20px Segoe UI, Arial';
+    ctx.fillText("SPACE or click to start  •  double-jump supported", canvas.width/2, canvas.height/2 + 22);
+    ctx.textAlign = 'left';
+  }
+}
+
+// ── Go ───────────────────────────────────────────────────────────────────
+init();
+loop();
+</script>
+</body>
+</html>
