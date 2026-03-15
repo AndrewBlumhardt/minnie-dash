@@ -76,7 +76,7 @@ function init() {
   state='idle'; score=0; lives=3; speed=4; frame=0;
   obstacles=[]; treats=[]; squirrels=[]; birds=[]; particles=[];
   clouds=makeClouds(); trees=makeTrees();
-  nextObs=110; nextTreat=70; nextBird=260; nextSquirrel=340; canDbl=true;
+  nextObs=110; nextTreat=70; nextBird=260; nextSquirrel=180; canDbl=true;
   minnie.y=GY-minnie.h; minnie.vy=0; minnie.onGround=true;
   minnie.invincible=0;
   updateHUD(); setMsg('Press SPACE or click to start');
@@ -369,25 +369,20 @@ function loop(){
       }
     });
 
-    if(score>=8&&--nextSquirrel<=0){ spawnSquirrel(); nextSquirrel=Math.max(Math.floor(280+Math.random()*160-score*.8),140); }
+    if(score>=4&&--nextSquirrel<=0){ spawnSquirrel(); nextSquirrel=Math.max(Math.floor(160+Math.random()*100-score*.5),80); }
     squirrels=squirrels.filter(s=>s.x>-44&&!s.collected);
     squirrels.forEach(s=>{
       s.x-=speed*.88; drawSquirrel(s);
       if(overlaps(mb.x,mb.y,mb.w,mb.h,s.x,s.y,s.w,s.h)){
-        s.collected=true; score+=5; burstPuff(s.x+s.w/2,s.y+s.h/2,'#f9c84a'); updateHUD();
+        s.collected=true; score+=5;
+        if(lives<3){ lives++; } burstPuff(s.x+s.w/2,s.y+s.h/2,'#f9c84a'); updateHUD();
         if(score>=WIN_SCORE){ state='win'; if(score>best){best=score;updateHUD();} }
       }
     });
 
     if(minnie.invincible>0) minnie.invincible--;
 
-    if(birds.some(b=>b.x<canvas.width&&b.x+b.w>canvas.width-200)){
-      ctx.save();
-      ctx.fillStyle='rgba(30,10,10,0.65)'; ctx.beginPath(); ctx.roundRect(canvas.width-196,10,186,34,6); ctx.fill();
-      ctx.fillStyle='#ff6655'; ctx.font='bold 18px Segoe UI,Arial'; ctx.textAlign='right';
-      ctx.fillText('🐦 BIRD INCOMING — JUMP!',canvas.width-12,31); ctx.textAlign='left';
-      ctx.restore();
-    }
+
   }
 
   particles=particles.filter(p=>p.life>0);
