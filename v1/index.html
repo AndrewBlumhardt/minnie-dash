@@ -1,0 +1,571 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Doggo Dash</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { background: #1a1a2e; display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100vh; font-family: Arial, sans-serif; }
+  h1 { color: #e2b96f; margin-bottom: 12px; font-size: 2rem; letter-spacing: 2px; }
+  #gameCanvas { background: #87CEEB; border: 3px solid #e2b96f; border-radius: 6px; display: block; }
+  #ui { color: #e2b96f; margin-top: 10px; font-size: 1rem; letter-spacing: 1px; }
+  #message { color: #fff; font-size: 1.4rem; margin-top: 10px; height: 30px; text-align: center; }
+</style>
+</head>
+<body>
+<h1>🐾 Doggo Dash</h1>
+<canvas id="gameCanvas" width="900" height="320"></canvas>
+<div id="ui">Score: <span id="score">0</span> &nbsp;|&nbsp; Best: <span id="best">0</span> &nbsp;|&nbsp; Lives: <span id="lives">3</span></div>
+<div id="message">Press SPACE or ↑ to jump &nbsp;|&nbsp; SPACE to start</div>
+
+<script>
+const canvas = document.getElementById('gameCanvas');
+const ctx = canvas.getContext('2d');
+
+// ─── Palette ───────────────────────────────────────────────────────────────
+const COLORS = {
+  sky:       '#87CEEB',
+  skyGrad1:  '#c9e8ff',
+  ground:    '#5c8a3c',
+  groundDark:'#3d5e28',
+  dirt:      '#8B6914',
+  dog:       '#c8860a',
+  dogDark:   '#7a4f06',
+  dogEye:    '#ffffff',
+  dogNose:   '#222',
+  dogTongue: '#e84393',
+  obstacle:  '#d44',
+  obstDark:  '#922',
+  coin:      '#FFD700',
+  coinShine: '#fffbe6',
+  cloud:     'rgba(255,255,255,0.85)',
+  tree:      '#2d6a1f',
+  treeTrunk: '#8B5E3C',
+  text:      '#fff',
+};
+
+// ─── State ─────────────────────────────────────────────────────────────────
+const GROUND_Y = 260;
+const DOG_X    = 90;
+
+let state, score, best, lives, speed, frameCount, obstacles, coins, clouds, particles, bgTrees;
+
+function init() {
+  state      = 'idle';   // idle | running | dead | win
+  score      = 0;
+  lives      = 3;
+  speed      = 4;
+  frameCount = 0;
+  obstacles  = [];
+  coins      = [];
+  clouds     = spawnClouds();
+  bgTrees    = spawnTrees();
+  particles  = [];
+  dog.y      = GROUND_Y - dog.h;
+  dog.vy     = 0;
+  dog.onGround = true;
+  dog.frame  = 0;
+  dog.animTimer = 0;
+  dog.invincible = 0;
+  setMessage('Press SPACE or ↑ to jump  |  SPACE to start');
+}
+
+// ─── Dog ───────────────────────────────────────────────────────────────────
+const dog = {
+  x: DOG_X, y: 0, w: 44, h: 32,
+  vy: 0, onGround: true,
+  frame: 0, animTimer: 0,
+  invincible: 0,
+};
+
+const JUMP_FORCE   = -12.5;
+const GRAVITY      = 0.55;
+const DOUBLE_JUMP  = true;
+let   canDoubleJump = true;
+
+function jump() {
+  if (dog.onGround) {
+    dog.vy = JUMP_FORCE;
+    dog.onGround = false;
+    canDoubleJump = true;
+    spawnJumpParticles();
+  } else if (canDoubleJump && DOUBLE_JUMP) {
+    dog.vy = JUMP_FORCE * 0.8;
+    canDoubleJump = false;
+    spawnJumpParticles();
+  }
+}
+
+// ─── Input ─────────────────────────────────────────────────────────────────
+document.addEventListener('keydown', e => {
+  if (e.code === 'Space' || e.code === 'ArrowUp') {
+    e.preventDefault();
+    if (state === 'idle' || state === 'dead' || state === 'win') {
+      if (state === 'dead' || state === 'win') init();
+      state = 'running';
+      setMessage('');
+    } else if (state === 'running') {
+      jump();
+    }
+  }
+});
+canvas.addEventListener('click', () => {
+  if (state === 'idle' || state === 'dead' || state === 'win') {
+    if (state === 'dead' || state === 'win') init();
+    state = 'running';
+    setMessage('');
+  } else if (state === 'running') {
+    jump();
+  }
+});
+
+// ─── Obstacles ─────────────────────────────────────────────────────────────
+const OBSTACLE_TYPES = [
+  { label: 'cactus',  w: 22, h: 40 },
+  { label: 'rock',    w: 34, h: 24 },
+  { label: 'fence',   w: 18, h: 52 },
+  { label: 'log',     w: 48, h: 20 },
+];
+
+function spawnObstacle() {
+  const t = OBSTACLE_TYPES[Math.floor(Math.random() * OBSTACLE_TYPES.length)];
+  obstacles.push({
+    x: canvas.width + 20,
+    y: GROUND_Y - t.h,
+    w: t.w, h: t.h,
+    label: t.label,
+  });
+}
+
+function drawObstacle(o) {
+  ctx.save();
+  if (o.label === 'cactus') {
+    ctx.fillStyle = '#2a7a2a';
+    ctx.fillRect(o.x + 7, o.y, 8, o.h);
+    ctx.fillRect(o.x, o.y + 12, o.w, 8);
+    ctx.fillStyle = '#1a5a1a';
+    ctx.fillRect(o.x + 8, o.y, 6, o.h);
+    ctx.fillRect(o.x + 1, o.y + 13, o.w - 2, 6);
+  } else if (o.label === 'rock') {
+    ctx.fillStyle = '#888';
+    ctx.beginPath();
+    ctx.ellipse(o.x + o.w/2, o.y + o.h/2 + 4, o.w/2, o.h/2, 0, 0, Math.PI*2);
+    ctx.fill();
+    ctx.fillStyle = '#aaa';
+    ctx.beginPath();
+    ctx.ellipse(o.x + o.w/2 - 4, o.y + o.h/2, o.w/3, o.h/3, -0.3, 0, Math.PI*2);
+    ctx.fill();
+  } else if (o.label === 'fence') {
+    ctx.fillStyle = '#c8a06a';
+    for (let i = 0; i < 2; i++) {
+      const px = o.x + i * 10;
+      ctx.fillRect(px, o.y, 6, o.h);
+      ctx.beginPath();
+      ctx.moveTo(px, o.y);
+      ctx.lineTo(px + 3, o.y - 6);
+      ctx.lineTo(px + 6, o.y);
+      ctx.fill();
+    }
+    ctx.fillRect(o.x, o.y + 10, o.w, 5);
+    ctx.fillRect(o.x, o.y + 28, o.w, 5);
+  } else if (o.label === 'log') {
+    ctx.fillStyle = '#8B5E3C';
+    ctx.beginPath();
+    ctx.ellipse(o.x + o.w/2, o.y + o.h/2, o.w/2, o.h/2, 0, 0, Math.PI*2);
+    ctx.fill();
+    ctx.fillStyle = '#c8904a';
+    ctx.beginPath();
+    ctx.ellipse(o.x + o.w/2, o.y + o.h/2, o.w/2 - 4, o.h/2 - 4, 0, 0, Math.PI*2);
+    ctx.fill();
+    ctx.strokeStyle = '#8B5E3C';
+    ctx.lineWidth = 1;
+    for (let r = 4; r < o.w/2 - 4; r += 4) {
+      ctx.beginPath();
+      ctx.ellipse(o.x + o.w/2, o.y + o.h/2, r, r * 0.4, 0, 0, Math.PI*2);
+      ctx.stroke();
+    }
+  }
+  ctx.restore();
+}
+
+// ─── Coins ─────────────────────────────────────────────────────────────────
+function spawnCoin() {
+  const heights = [GROUND_Y - 20, GROUND_Y - 55, GROUND_Y - 90];
+  const y = heights[Math.floor(Math.random() * heights.length)];
+  coins.push({ x: canvas.width + 10, y, r: 10, collected: false });
+}
+
+function drawCoin(c, t) {
+  const bob = Math.sin(t * 0.05 + c.x * 0.01) * 3;
+  ctx.save();
+  ctx.beginPath();
+  ctx.arc(c.x, c.y + bob, c.r, 0, Math.PI * 2);
+  ctx.fillStyle = COLORS.coin;
+  ctx.fill();
+  ctx.fillStyle = COLORS.coinShine;
+  ctx.beginPath();
+  ctx.arc(c.x - 3, c.y + bob - 3, 3, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.restore();
+}
+
+// ─── Clouds ────────────────────────────────────────────────────────────────
+function spawnClouds() {
+  return Array.from({ length: 5 }, (_, i) => ({
+    x: 100 + i * 180 + Math.random() * 80,
+    y: 30 + Math.random() * 60,
+    w: 70 + Math.random() * 50,
+    speed: 0.4 + Math.random() * 0.3,
+  }));
+}
+
+function drawCloud(c) {
+  ctx.fillStyle = COLORS.cloud;
+  ctx.beginPath();
+  ctx.arc(c.x, c.y, c.w * 0.3, 0, Math.PI * 2);
+  ctx.arc(c.x + c.w * 0.25, c.y - c.w * 0.1, c.w * 0.22, 0, Math.PI * 2);
+  ctx.arc(c.x + c.w * 0.5, c.y, c.w * 0.28, 0, Math.PI * 2);
+  ctx.fill();
+}
+
+// ─── Background Trees ──────────────────────────────────────────────────────
+function spawnTrees() {
+  return Array.from({ length: 8 }, (_, i) => ({
+    x: 60 + i * 120 + Math.random() * 40,
+    h: 40 + Math.random() * 30,
+    speed: 1.2,
+  }));
+}
+
+function drawTree(t) {
+  const bx = t.x, by = GROUND_Y;
+  ctx.fillStyle = COLORS.treeTrunk;
+  ctx.fillRect(bx - 4, by - t.h * 0.35, 8, t.h * 0.35);
+  ctx.fillStyle = COLORS.tree;
+  ctx.beginPath();
+  ctx.moveTo(bx, by - t.h);
+  ctx.lineTo(bx - 18, by - t.h * 0.4);
+  ctx.lineTo(bx + 18, by - t.h * 0.4);
+  ctx.closePath();
+  ctx.fill();
+  ctx.beginPath();
+  ctx.moveTo(bx, by - t.h * 1.15);
+  ctx.lineTo(bx - 13, by - t.h * 0.65);
+  ctx.lineTo(bx + 13, by - t.h * 0.65);
+  ctx.closePath();
+  ctx.fill();
+}
+
+// ─── Particles ─────────────────────────────────────────────────────────────
+function spawnJumpParticles() {
+  for (let i = 0; i < 6; i++) {
+    particles.push({
+      x: dog.x + dog.w / 2,
+      y: dog.y + dog.h,
+      vx: (Math.random() - 0.5) * 3,
+      vy: Math.random() * -2 - 1,
+      life: 20,
+      color: '#8B6914',
+    });
+  }
+}
+
+function spawnCoinParticles(x, y) {
+  for (let i = 0; i < 8; i++) {
+    const angle = (i / 8) * Math.PI * 2;
+    particles.push({
+      x, y,
+      vx: Math.cos(angle) * 2.5,
+      vy: Math.sin(angle) * 2.5,
+      life: 25,
+      color: COLORS.coin,
+    });
+  }
+}
+
+function spawnHitParticles() {
+  for (let i = 0; i < 10; i++) {
+    particles.push({
+      x: dog.x + dog.w / 2,
+      y: dog.y + dog.h / 2,
+      vx: (Math.random() - 0.5) * 5,
+      vy: Math.random() * -4 - 1,
+      life: 30,
+      color: '#e44',
+    });
+  }
+}
+
+// ─── Draw Dog ──────────────────────────────────────────────────────────────
+function drawDog(frameCount) {
+  if (dog.invincible > 0 && Math.floor(dog.invincible / 4) % 2 === 0) return;
+
+  const x = dog.x, y = dog.y;
+  const legSwing = dog.onGround ? Math.sin(frameCount * 0.35) * 5 : 0;
+  const tailWag  = Math.sin(frameCount * 0.25) * 8;
+
+  ctx.save();
+
+  // Tail
+  ctx.strokeStyle = COLORS.dogDark;
+  ctx.lineWidth = 4;
+  ctx.beginPath();
+  ctx.moveTo(x + 2, y + 14);
+  ctx.quadraticCurveTo(x - 10, y + 6 + tailWag, x - 4, y - 2 + tailWag);
+  ctx.stroke();
+
+  // Body
+  ctx.fillStyle = COLORS.dog;
+  ctx.beginPath();
+  ctx.ellipse(x + 22, y + 18, 20, 13, 0, 0, Math.PI * 2);
+  ctx.fill();
+
+  // Legs
+  ctx.fillStyle = COLORS.dogDark;
+  ctx.fillRect(x + 8,  y + 24 + legSwing,     6, 10);
+  ctx.fillRect(x + 18, y + 24 - legSwing,     6, 10);
+  ctx.fillRect(x + 28, y + 24 + legSwing * 0.7, 6, 10);
+  ctx.fillRect(x + 36, y + 24 - legSwing * 0.7, 6, 10);
+
+  // Head
+  ctx.fillStyle = COLORS.dog;
+  ctx.beginPath();
+  ctx.ellipse(x + 38, y + 10, 12, 10, 0.2, 0, Math.PI * 2);
+  ctx.fill();
+
+  // Ear
+  ctx.fillStyle = COLORS.dogDark;
+  ctx.beginPath();
+  ctx.ellipse(x + 32, y + 4, 6, 8, -0.5, 0, Math.PI * 2);
+  ctx.fill();
+
+  // Snout
+  ctx.fillStyle = '#e8a050';
+  ctx.beginPath();
+  ctx.ellipse(x + 47, y + 13, 7, 5, 0, 0, Math.PI * 2);
+  ctx.fill();
+
+  // Nose
+  ctx.fillStyle = COLORS.dogNose;
+  ctx.beginPath();
+  ctx.ellipse(x + 51, y + 11, 3, 2, 0, 0, Math.PI * 2);
+  ctx.fill();
+
+  // Eye
+  ctx.fillStyle = COLORS.dogEye;
+  ctx.beginPath();
+  ctx.arc(x + 41, y + 7, 4, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.fillStyle = '#222';
+  ctx.beginPath();
+  ctx.arc(x + 42, y + 7, 2, 0, Math.PI * 2);
+  ctx.fill();
+
+  // Tongue (when running)
+  if (state === 'running') {
+    ctx.fillStyle = COLORS.dogTongue;
+    ctx.beginPath();
+    ctx.ellipse(x + 49, y + 18, 3, 4, 0.2, 0, Math.PI * 2);
+    ctx.fill();
+  }
+
+  ctx.restore();
+}
+
+// ─── Draw Ground ───────────────────────────────────────────────────────────
+function drawGround() {
+  ctx.fillStyle = COLORS.ground;
+  ctx.fillRect(0, GROUND_Y, canvas.width, canvas.height - GROUND_Y);
+  ctx.fillStyle = COLORS.groundDark;
+  ctx.fillRect(0, GROUND_Y, canvas.width, 5);
+  ctx.fillStyle = COLORS.dirt;
+  ctx.fillRect(0, GROUND_Y + 14, canvas.width, canvas.height - GROUND_Y - 14);
+}
+
+// ─── Draw Sky ──────────────────────────────────────────────────────────────
+function drawSky() {
+  const grad = ctx.createLinearGradient(0, 0, 0, GROUND_Y);
+  grad.addColorStop(0, '#5ba3de');
+  grad.addColorStop(1, COLORS.skyGrad1);
+  ctx.fillStyle = grad;
+  ctx.fillRect(0, 0, canvas.width, GROUND_Y);
+}
+
+// ─── HUD ───────────────────────────────────────────────────────────────────
+function updateHUD() {
+  document.getElementById('score').textContent = score;
+  document.getElementById('best').textContent  = best || 0;
+  document.getElementById('lives').textContent = lives;
+}
+
+function setMessage(msg) {
+  document.getElementById('message').textContent = msg;
+}
+
+// ─── Collision ─────────────────────────────────────────────────────────────
+function rectsOverlap(ax, ay, aw, ah, bx, by, bw, bh) {
+  const pad = 6;
+  return ax + pad < bx + bw - pad &&
+         ax + aw - pad > bx + pad &&
+         ay + pad < by + bh - pad &&
+         ay + ah - pad > by + pad;
+}
+
+// ─── Win Screen ────────────────────────────────────────────────────────────
+const WIN_SCORE = 50;
+
+function drawOverlay(title, sub) {
+  ctx.fillStyle = 'rgba(0,0,0,0.45)';
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+  ctx.fillStyle = '#FFD700';
+  ctx.font = 'bold 48px Arial';
+  ctx.textAlign = 'center';
+  ctx.fillText(title, canvas.width / 2, canvas.height / 2 - 20);
+  ctx.fillStyle = '#fff';
+  ctx.font = '22px Arial';
+  ctx.fillText(sub, canvas.width / 2, canvas.height / 2 + 22);
+  ctx.textAlign = 'left';
+}
+
+// ─── Spawn timers ──────────────────────────────────────────────────────────
+let nextObstacle = 90;
+let nextCoin     = 60;
+
+// ─── Main Loop ─────────────────────────────────────────────────────────────
+function loop() {
+  requestAnimationFrame(loop);
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+  drawSky();
+
+  // Clouds
+  clouds.forEach(c => {
+    drawCloud(c);
+    if (state === 'running') c.x -= c.speed;
+    if (c.x + 120 < 0) c.x = canvas.width + 40;
+  });
+
+  // Background trees
+  bgTrees.forEach(t => {
+    drawTree(t);
+    if (state === 'running') t.x -= t.speed;
+    if (t.x + 30 < 0) t.x = canvas.width + 20;
+  });
+
+  drawGround();
+
+  if (state === 'running') {
+    frameCount++;
+
+    // Speed ramp
+    speed = 4 + Math.min(score * 0.08, 8);
+
+    // Spawn obstacles
+    nextObstacle--;
+    if (nextObstacle <= 0) {
+      spawnObstacle();
+      nextObstacle = Math.floor(80 + Math.random() * 60 - score * 0.3);
+      nextObstacle = Math.max(nextObstacle, 45);
+    }
+
+    // Spawn coins
+    nextCoin--;
+    if (nextCoin <= 0) {
+      spawnCoin();
+      nextCoin = Math.floor(50 + Math.random() * 40);
+    }
+
+    // Physics
+    dog.vy += GRAVITY;
+    dog.y  += dog.vy;
+    if (dog.y >= GROUND_Y - dog.h) {
+      dog.y = GROUND_Y - dog.h;
+      dog.vy = 0;
+      dog.onGround = true;
+      canDoubleJump = true;
+    }
+
+    // Move and draw obstacles
+    obstacles = obstacles.filter(o => o.x + o.w > -10);
+    obstacles.forEach(o => {
+      o.x -= speed;
+      drawObstacle(o);
+      if (dog.invincible <= 0 && rectsOverlap(dog.x, dog.y, dog.w, dog.h, o.x, o.y, o.w, o.h)) {
+        lives--;
+        dog.invincible = 80;
+        spawnHitParticles();
+        updateHUD();
+        if (lives <= 0) {
+          state = 'dead';
+          if (score > (best || 0)) best = score;
+          updateHUD();
+          drawOverlay('Game Over!', `Score: ${score}  |  Press SPACE to retry`);
+          nextObstacle = 90;
+          nextCoin     = 60;
+          return;
+        }
+      }
+    });
+
+    // Move and draw coins
+    coins = coins.filter(c => c.x + 10 > -10 && !c.collected);
+    coins.forEach(c => {
+      c.x -= speed * 0.9;
+      drawCoin(c, frameCount);
+      if (rectsOverlap(dog.x, dog.y, dog.w, dog.h, c.x - c.r, c.y - c.r, c.r * 2, c.r * 2)) {
+        c.collected = true;
+        score++;
+        spawnCoinParticles(c.x, c.y);
+        updateHUD();
+        if (score >= WIN_SCORE) {
+          state = 'win';
+          if (score > (best || 0)) best = score;
+          updateHUD();
+        }
+      }
+    });
+
+    // Dog
+    if (dog.invincible > 0) dog.invincible--;
+  }
+
+  // Particles
+  particles = particles.filter(p => p.life > 0);
+  particles.forEach(p => {
+    ctx.globalAlpha = p.life / 30;
+    ctx.fillStyle = p.color;
+    ctx.beginPath();
+    ctx.arc(p.x, p.y, 3, 0, Math.PI * 2);
+    ctx.fill();
+    p.x += p.vx;
+    p.y += p.vy;
+    p.vy += 0.1;
+    p.life--;
+  });
+  ctx.globalAlpha = 1;
+
+  drawDog(frameCount);
+
+  if (state === 'win') {
+    drawOverlay('You Win! 🐾', `Score: ${score}  |  Press SPACE to play again`);
+  }
+  if (state === 'dead') {
+    drawOverlay('Game Over!', `Score: ${score}  |  Press SPACE to retry`);
+  }
+  if (state === 'idle') {
+    ctx.fillStyle = 'rgba(0,0,0,0.3)';
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    ctx.fillStyle = '#FFD700';
+    ctx.font = 'bold 40px Arial';
+    ctx.textAlign = 'center';
+    ctx.fillText('🐶 Avoid obstacles — collect 50 coins to win!', canvas.width / 2, canvas.height / 2);
+    ctx.textAlign = 'left';
+  }
+}
+
+// ─── Start ─────────────────────────────────────────────────────────────────
+init();
+loop();
+</script>
+</body>
+</html>
