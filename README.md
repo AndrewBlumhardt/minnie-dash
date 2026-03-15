@@ -5,9 +5,15 @@ A tiny browser platformer starring **Minnie** — a real dog.
 Help Minnie run, jump, and collect **50 dog-bone treats** while dodging obstacles.  
 Double-jump supported. No installs, no build step — just open `index.html`.
 
+## ▶️ Play Live
+
+<a href="https://andrewblumhardt.github.io/minnie-dash/" target="_blank">
+  <img src="https://img.shields.io/badge/▶%20Play%20Minnie%20Dash-Live%20Demo-f9c84a?style=for-the-badge&labelColor=1a1a3e" alt="Play Minnie Dash">
+</a>
+
 ![Minnie Dash screenshot](https://raw.githubusercontent.com/AndrewBlumhardt/minnie-dash/main/screenshot.png)
 
-## Play
+## Play Locally
 
 Open `index.html` in any modern browser.
 
