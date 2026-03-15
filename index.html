@@ -73,7 +73,7 @@ let nextObs, nextTreat, nextBird, nextSquirrel, canDbl;
 const minnie = { x:MINNIE_X, y:GY, w:52, h:36, vy:0, onGround:true, invincible:0 };
 
 function init() {
-  state='idle'; score=0; lives=3; speed=4; frame=0;
+  state='idle'; score=0; lives=5; speed=4; frame=0;
   obstacles=[]; treats=[]; squirrels=[]; birds=[]; particles=[];
   clouds=makeClouds(); trees=makeTrees();
   nextObs=110; nextTreat=70; nextBird=260; nextSquirrel=180; canDbl=true;
@@ -103,7 +103,7 @@ canvas.addEventListener('click', doAction);
 function updateHUD() {
   document.getElementById('score').textContent=score;
   document.getElementById('best').textContent=best;
-  document.getElementById('lives').textContent='❤️'.repeat(Math.max(lives,0))+'🖤'.repeat(Math.max(3-lives,0));
+  document.getElementById('lives').textContent='❤️'.repeat(Math.max(lives,0))+'🖤'.repeat(Math.max(10-lives,0));
 }
 function setMsg(t){ document.getElementById('message').textContent=t; }
 
@@ -205,57 +205,106 @@ function drawTreat(t){
 
 function spawnSquirrel(){
   const ys=[GY-32,GY-85,GY-140];
-  squirrels.push({x:canvas.width+24,y:ys[Math.floor(Math.random()*ys.length)],w:38,h:42,collected:false});
+  squirrels.push({x:canvas.width+24,y:ys[Math.floor(Math.random()*ys.length)],w:40,h:52,collected:false});
 }
 function drawSquirrel(s){
-  const bob=Math.sin(frame*.07+s.x*.013)*3;
-  const sx=s.x+s.w/2, sy=s.y+s.h/2+bob;
+  const bob=Math.sin(frame*.07+s.x*.013)*2.5;
   ctx.save();
-  ctx.translate(sx,sy);
-  // Shadow
-  ctx.fillStyle='rgba(0,0,0,0.15)'; ctx.beginPath(); ctx.ellipse(0,s.h/2+3,13,4,0,0,Math.PI*2); ctx.fill();
-  // Big fluffy tail (behind body, curls up)
-  ctx.fillStyle='#7a3b10';
-  ctx.beginPath(); ctx.arc(2,-8,18,0,Math.PI*2); ctx.fill();
-  ctx.fillStyle='#9e5320';
-  ctx.beginPath(); ctx.arc(2,-9,13,0,Math.PI*2); ctx.fill();
-  ctx.fillStyle='#c8784a';
-  ctx.beginPath(); ctx.arc(1,-10,8,0,Math.PI*2); ctx.fill();
-  ctx.fillStyle='#dea882';
-  ctx.beginPath(); ctx.arc(0,-11,4,0,Math.PI*2); ctx.fill();
-  // Body
-  ctx.fillStyle='#7a3b10';
-  ctx.beginPath(); ctx.ellipse(1,7,9,13,0,0,Math.PI*2); ctx.fill();
-  // Belly
-  ctx.fillStyle='#deb887';
-  ctx.beginPath(); ctx.ellipse(1,9,5,8,0,0,Math.PI*2); ctx.fill();
-  // Head
-  ctx.fillStyle='#7a3b10';
-  ctx.beginPath(); ctx.arc(5,-5,9,0,Math.PI*2); ctx.fill();
-  // Ears
-  ctx.fillStyle='#7a3b10';
-  ctx.beginPath(); ctx.moveTo(-1,-12); ctx.lineTo(-5,-20); ctx.lineTo(2,-15); ctx.closePath(); ctx.fill();
-  ctx.beginPath(); ctx.moveTo(9,-12); ctx.lineTo(14,-20); ctx.lineTo(10,-15); ctx.closePath(); ctx.fill();
-  ctx.fillStyle='#e8b0b0';
-  ctx.beginPath(); ctx.moveTo(0,-13); ctx.lineTo(-3,-18); ctx.lineTo(1,-15); ctx.closePath(); ctx.fill();
-  ctx.beginPath(); ctx.moveTo(10,-13); ctx.lineTo(13,-18); ctx.lineTo(10,-15); ctx.closePath(); ctx.fill();
-  // Eyes
+  ctx.translate(s.x+s.w/2, s.y+s.h/2+bob);
+
+  // === TAIL — large S-curve shape rising up and over ===
+  // Outermost dark layer
+  ctx.fillStyle='#5a2800';
+  ctx.beginPath();
+  ctx.moveTo(6,14);
+  ctx.bezierCurveTo(28,10, 32,-10, 18,-26);
+  ctx.bezierCurveTo(10,-34, -8,-32, -12,-20);
+  ctx.bezierCurveTo(-16,-8, -4,2, 6,14);
+  ctx.closePath(); ctx.fill();
+  // Mid layer
+  ctx.fillStyle='#8b4513';
+  ctx.beginPath();
+  ctx.moveTo(5,11);
+  ctx.bezierCurveTo(24,8, 28,-8, 16,-22);
+  ctx.bezierCurveTo(9,-30, -5,-28, -8,-18);
+  ctx.bezierCurveTo(-11,-6, -2,2, 5,11);
+  ctx.closePath(); ctx.fill();
+  // Inner highlight
+  ctx.fillStyle='#c8703a';
+  ctx.beginPath();
+  ctx.moveTo(4,8);
+  ctx.bezierCurveTo(18,5, 22,-5, 12,-18);
+  ctx.bezierCurveTo(6,-24, -2,-22, -4,-14);
+  ctx.bezierCurveTo(-7,-5, 0,2, 4,8);
+  ctx.closePath(); ctx.fill();
+  // Fluffy tip shimmer
+  ctx.fillStyle='#f0c080';
+  ctx.beginPath(); ctx.ellipse(-8,-19,5,3,-0.8,0,Math.PI*2); ctx.fill();
+
+  // === BODY ===
+  ctx.fillStyle='#8b4513';
+  ctx.beginPath(); ctx.ellipse(0,10,8,12,0,0,Math.PI*2); ctx.fill();
+  // Belly cream
+  ctx.fillStyle='#f5deb3';
+  ctx.beginPath(); ctx.ellipse(0,11,4,8,0,0,Math.PI*2); ctx.fill();
+
+  // === BACK LEGS ===
+  ctx.fillStyle='#6b3410';
+  ctx.beginPath(); ctx.ellipse(-6,18,4,5,0.4,0,Math.PI*2); ctx.fill();
+  ctx.beginPath(); ctx.ellipse(6,18,4,5,-0.4,0,Math.PI*2); ctx.fill();
+  // Feet
+  ctx.fillStyle='#4a2208';
+  ctx.beginPath(); ctx.ellipse(-7,22,5,2.5,0.2,0,Math.PI*2); ctx.fill();
+  ctx.beginPath(); ctx.ellipse(7,22,5,2.5,-0.2,0,Math.PI*2); ctx.fill();
+
+  // === HEAD ===
+  ctx.fillStyle='#8b4513';
+  ctx.beginPath(); ctx.ellipse(0,-4,8,7,0,0,Math.PI*2); ctx.fill();
+  // Cheek pouches (chubby squirrel cheeks)
+  ctx.fillStyle='#a05828';
+  ctx.beginPath(); ctx.ellipse(-7,-3,5,4,0.3,0,Math.PI*2); ctx.fill();
+  ctx.beginPath(); ctx.ellipse(7,-3,5,4,-0.3,0,Math.PI*2); ctx.fill();
+  // Muzzle snout
+  ctx.fillStyle='#f5deb3';
+  ctx.beginPath(); ctx.ellipse(0,-1,4,3,0,0,Math.PI*2); ctx.fill();
+
+  // === EARS (pointed) ===
+  ctx.fillStyle='#8b4513';
+  ctx.beginPath(); ctx.moveTo(-6,-9); ctx.lineTo(-10,-20); ctx.lineTo(-2,-12); ctx.closePath(); ctx.fill();
+  ctx.beginPath(); ctx.moveTo(6,-9); ctx.lineTo(10,-20); ctx.lineTo(2,-12); ctx.closePath(); ctx.fill();
+  ctx.fillStyle='#e8b0a0';
+  ctx.beginPath(); ctx.moveTo(-6,-10); ctx.lineTo(-9,-18); ctx.lineTo(-3,-13); ctx.closePath(); ctx.fill();
+  ctx.beginPath(); ctx.moveTo(6,-10); ctx.lineTo(9,-18); ctx.lineTo(3,-13); ctx.closePath(); ctx.fill();
+
+  // === EYES (large, bright) ===
   ctx.fillStyle='#1a0800';
-  ctx.beginPath(); ctx.arc(2,-6,2.5,0,Math.PI*2); ctx.fill();
-  ctx.beginPath(); ctx.arc(9,-6,2.5,0,Math.PI*2); ctx.fill();
+  ctx.beginPath(); ctx.arc(-3,-5,3,0,Math.PI*2); ctx.fill();
+  ctx.beginPath(); ctx.arc(3,-5,3,0,Math.PI*2); ctx.fill();
   ctx.fillStyle='#fff';
-  ctx.beginPath(); ctx.arc(1,-7,1,0,Math.PI*2); ctx.fill();
-  ctx.beginPath(); ctx.arc(8,-7,1,0,Math.PI*2); ctx.fill();
-  // Nose
-  ctx.fillStyle='#331100';
-  ctx.beginPath(); ctx.ellipse(6,-3,2,1.5,0,0,Math.PI*2); ctx.fill();
-  // Little arms
-  ctx.strokeStyle='#7a3b10'; ctx.lineWidth=3; ctx.lineCap='round';
-  ctx.beginPath(); ctx.moveTo(-3,3); ctx.lineTo(-11,-1); ctx.stroke();
-  ctx.beginPath(); ctx.moveTo(9,3); ctx.lineTo(17,-1); ctx.stroke();
-  // +5 bonus label
-  ctx.fillStyle='#f9c84a'; ctx.font='bold 12px Arial'; ctx.textAlign='center';
-  ctx.fillText('+5',0,-24);
+  ctx.beginPath(); ctx.arc(-4,-6,1.2,0,Math.PI*2); ctx.fill();
+  ctx.beginPath(); ctx.arc(2,-6,1.2,0,Math.PI*2); ctx.fill();
+
+  // === NOSE ===
+  ctx.fillStyle='#2a0800';
+  ctx.beginPath(); ctx.ellipse(0,-0.5,2.5,1.8,0,0,Math.PI*2); ctx.fill();
+
+  // === FRONT ARMS holding an acorn ===
+  ctx.strokeStyle='#6b3410'; ctx.lineWidth=3; ctx.lineCap='round';
+  ctx.beginPath(); ctx.moveTo(-4,5); ctx.lineTo(-10,10); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(4,5); ctx.lineTo(10,10); ctx.stroke();
+  // Acorn body
+  ctx.fillStyle='#c8890a';
+  ctx.beginPath(); ctx.ellipse(0,13,5,6,0,0,Math.PI*2); ctx.fill();
+  // Acorn cap
+  ctx.fillStyle='#5a3a0a';
+  ctx.beginPath(); ctx.ellipse(0,9,6,3.5,0,0,Math.PI*2); ctx.fill();
+  // Acorn stem
+  ctx.strokeStyle='#3a2008'; ctx.lineWidth=1.5;
+  ctx.beginPath(); ctx.moveTo(0,7); ctx.lineTo(0,5); ctx.stroke();
+
+  // === +5 ❤️ label ===
+  ctx.fillStyle='#f9c84a'; ctx.font='bold 13px Arial'; ctx.textAlign='center';
+  ctx.fillText('+5 ❤️',0,-27);
   ctx.textAlign='left';
   ctx.restore();
 }
@@ -344,7 +393,7 @@ function loop(){
   drawGround();
 
   if(state==='running'){
-    frame++; speed=4+Math.min(score*.09,10);
+    frame++; speed=4+Math.min(score*.045,8);
     if(--nextObs<=0)  { spawnObs();   nextObs=Math.max(Math.floor(95+Math.random()*70-score*.35),52); }
     if(--nextTreat<=0){ spawnTreat(); nextTreat=Math.floor(52+Math.random()*42); }
     if(score>=4&&--nextBird<=0){ spawnBird(); nextBird=Math.max(Math.floor(150+Math.random()*90-score*.6),75); }
@@ -375,7 +424,7 @@ function loop(){
       s.x-=speed*.88; drawSquirrel(s);
       if(overlaps(mb.x,mb.y,mb.w,mb.h,s.x,s.y,s.w,s.h)){
         s.collected=true; score+=5;
-        if(lives<3){ lives++; } burstPuff(s.x+s.w/2,s.y+s.h/2,'#f9c84a'); updateHUD();
+        if(lives<10){ lives++; } burstPuff(s.x+s.w/2,s.y+s.h/2,'#f9c84a'); updateHUD();
         if(score>=WIN_SCORE){ state='win'; if(score>best){best=score;updateHUD();} }
       }
     });
