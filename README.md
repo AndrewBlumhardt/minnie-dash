@@ -1,9 +1,8 @@
 # 🐾 Minnie Dash
 
-A tiny browser platformer starring **Minnie** — a real dog.
+A browser platformer starring **Minnie** — a real dog.
 
-Help Minnie run, jump, and collect **50 dog-bone treats** while dodging obstacles.  
-Double-jump supported. No installs, no build step — just open `index.html`.
+Help Minnie run, jump, and collect **50 dog-bone treats** while dodging obstacles and catching squirrels for bonus points and extra lives. Double-jump to clear birds. No installs, no build step — just open `index.html`.
 
 ## ▶️ Play Live
 
@@ -13,22 +12,35 @@ Double-jump supported. No installs, no build step — just open `index.html`.
 
 ![Minnie Dash screenshot](https://raw.githubusercontent.com/AndrewBlumhardt/minnie-dash/main/screenshot.png)
 
-## Play Locally
+## How to Play
 
-Open `index.html` in any modern browser.
+Open `index.html` in any modern browser — or [play live](https://andrewblumhardt.github.io/minnie-dash/).
 
 | Control | Action |
 |---------|--------|
-| `Space` / Click | Start · Jump |
-| Double-tap `Space` / Double-click | Double-jump |
+| `Space` / `↑` / Click | Start · Jump |
+| Double-tap | Double-jump (clears birds!) |
 
-Collect **50 treats** to win. You have **3 lives**.
+## Collectibles & Obstacles
+
+| Item | Description |
+|------|-------------|
+| 🦴 Bone treat | +1 point — collect 50 to win |
+| 🐿️ Squirrel | +5 points **+1 life** (max 10 lives) |
+| 🦊 Ground obstacles | Cones, rocks, fences, logs, hydrants — jump over them |
+| 🐦 Birds | Fly at varying heights — double-jump to clear |
+
+## Rules
+
+- Start with **5 lives**
+- Catch squirrels to gain up to **10 lives**
+- Squirrels appear more often as your score climbs
+- Speed increases gradually as you score
+- Collect **50 treats** to win
 
 ## About
 
 Built as a quick AI-assisted coding demo using **[Claude](https://anthropic.com)** (Sonnet 4.6 via GitHub Copilot).  
-The entire game — sprite art, physics, particle effects, and all — was generated in a single conversation.
-
 The dog character is modelled after the developer's real dog, Minnie 🐕.
 
 ## Stack
