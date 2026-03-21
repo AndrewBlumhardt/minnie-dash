@@ -1,8 +1,8 @@
 # 🐾 Minnie Dash
 
-A browser platformer starring **Minnie** — a real dog.
+A browser platformer starring **Minnie** - a real dog.
 
-Help Minnie run, jump, and collect **50 dog-bone treats** while dodging obstacles and catching squirrels for bonus points and extra lives. Double-jump to clear birds. No installs, no build step — just open `index.html`.
+Help Minnie run, jump, and collect **50 dog-bone treats** while dodging obstacles and catching squirrels for bonus points and extra lives. Double-jump to clear birds. No installs, no build step - just open `index.html`.
 
 ## ▶️ Play Live
 
@@ -14,7 +14,7 @@ Help Minnie run, jump, and collect **50 dog-bone treats** while dodging obstacle
 
 ## How to Play
 
-Open `index.html` in any modern browser — or [play live](https://andrewblumhardt.github.io/minnie-dash/).
+Open `index.html` in any modern browser - or [play live](https://andrewblumhardt.github.io/minnie-dash/).
 
 | Control | Action |
 |---------|--------|
@@ -25,10 +25,10 @@ Open `index.html` in any modern browser — or [play live](https://andrewblumhar
 
 | Item | Description |
 |------|-------------|
-| 🦴 Bone treat | +1 point — collect 50 to win |
+| 🦴 Bone treat | +1 point - collect 50 to win |
 | 🐿️ Squirrel | +5 points **+1 life** (max 10 lives) |
-| 🦊 Ground obstacles | Cones, rocks, fences, logs, hydrants — jump over them |
-| 🐦 Birds | Fly at varying heights — double-jump to clear |
+| 🦊 Ground obstacles | Cones, rocks, fences, logs, hydrants - jump over them |
+| 🐦 Birds | Fly at varying heights - double-jump to clear |
 
 ## Rules
 
@@ -46,7 +46,7 @@ The dog character is modelled after the developer's real dog, Minnie 🐕.
 ## Stack
 
 - Vanilla HTML5 Canvas + JavaScript
-- Single self-contained file (`index.html`) — no dependencies, no build toolchain
+- Single self-contained file (`index.html`) - no dependencies, no build toolchain
 
 ## License
 
