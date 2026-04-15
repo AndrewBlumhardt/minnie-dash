@@ -143,6 +143,35 @@
       color: var(--muted);
     }
 
+    .volume-controls {
+      margin-top: 14px;
+      display: grid;
+      gap: 8px;
+      color: var(--muted);
+      font-size: 0.88rem;
+    }
+
+    .volume-row {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .volume-controls input[type="range"] {
+      width: 100%;
+      accent-color: var(--cyan);
+    }
+
+    .volume-controls button {
+      border: 1px solid rgba(112, 221, 255, 0.4);
+      border-radius: 10px;
+      background: rgba(10, 29, 66, 0.84);
+      color: var(--ink);
+      padding: 6px 10px;
+      cursor: pointer;
+      font-weight: 600;
+    }
+
     .controls b,
     .notes b {
       color: var(--ink);
@@ -220,6 +249,15 @@
         <div><b>Restart:</b> Enter after game over</div>
       </section>
 
+      <section class="volume-controls" aria-label="sound controls">
+        <div class="volume-row">
+          <b>Volume</b>
+          <span id="volumeValue">70%</span>
+          <button id="muteButton" type="button">Mute</button>
+        </div>
+        <input id="volume" type="range" min="0" max="100" value="70" step="1" />
+      </section>
+
       <section class="notes">
         <div><b>Theme cues:</b> delta iconography, orbital rings, guardians, squadron craft, command hull.</div>
         <div><b>Objective:</b> keep the probe in flight, light orbit gates, stack multiplier hits, and avoid bonking any space janitors.</div>
@@ -242,6 +280,9 @@
     const ballsEl = document.getElementById("balls");
     const multiplierEl = document.getElementById("multiplier");
     const statusEl = document.getElementById("status");
+    const volumeEl = document.getElementById("volume");
+    const volumeValueEl = document.getElementById("volumeValue");
+    const muteButton = document.getElementById("muteButton");
 
     const board = {
       width: canvas.width,
@@ -264,7 +305,7 @@
       rightPressed: false,
       canRestart: false,
       neonTick: 0,
-      introActive: true,
+      introActive: false,
       message: "Hold Space to charge the launch rail."
     };
 
@@ -279,80 +320,142 @@
     bestEl.textContent = String(state.best);
 
     const ball = {
-      x: 454,
-      y: 860,
+      x: 495,
+      y: 240,
+      prevX: 495,
+      prevY: 240,
       vx: 0,
       vy: 0,
       r: 10,
+      inShooterLane: true,
+      launchAssist: 0,
       launched: false,
       trail: []
     };
 
     const plunger = {
-      x: 430,
-      y: 760,
-      width: 68,
-      height: 154,
-      minPower: 4.5,
-      maxPower: 18.5,
-      maxCharge: 34
+      x: 485,
+      y: 50,
+      width: 20,
+      height: 160,
+      minPower: 5.6,
+      maxPower: 19.6,
+      maxCharge: 28
+    };
+
+    const launcher = {
+      holdX: 495,
+      holdY: 240,
+      laneLeftX: 475,
+      laneRightX: 515,
+      topExitY: 180,
+      antiReentryY: 300,
+      exitGuideX: 400,
+      exitGuideY: 150,
+      assistFrames: 20,
+      assistPush: 0.2,
+      onrampAngle: 0.28
     };
 
     const bumpers = [
-      { x: 135, y: 206, r: 29, points: 140, pulse: 0, label: "NOVA" },
-      { x: 270, y: 166, r: 25, points: 180, pulse: 0, label: "DELTA" },
-      { x: 404, y: 214, r: 29, points: 140, pulse: 0, label: "ORBIT" },
-      { x: 188, y: 352, r: 23, points: 220, pulse: 0, label: "SAT" },
-      { x: 351, y: 352, r: 23, points: 220, pulse: 0, label: "COM" }
+      { x: 138, y: 140, r: 28, points: 180, pulse: 0, label: "ALPHA" },
+      { x: 270, y: 110, r: 26, points: 200, pulse: 0, label: "DELTA" },
+      { x: 402, y: 140, r: 28, points: 180, pulse: 0, label: "OMEGA" },
+      { x: 188, y: 240, r: 24, points: 160, pulse: 0, label: "NOVA" },
+      { x: 352, y: 240, r: 24, points: 160, pulse: 0, label: "PULSE" },
+      { x: 270, y: 320, r: 22, points: 140, pulse: 0, label: "ORBIT" }
     ];
 
     const gates = [
-      { x: 80, y: 112, w: 112, h: 14, points: 300, lit: 0, text: "ALPHA" },
-      { x: 214, y: 88, w: 112, h: 14, points: 400, lit: 0, text: "SPACE" },
-      { x: 348, y: 112, w: 112, h: 14, points: 300, lit: 0, text: "FORCE" }
+      { x: 60, y: 380, w: 100, h: 14, points: 300, lit: 0, text: "LEFT" },
+      { x: 190, y: 60, w: 160, h: 14, points: 400, lit: 0, text: "CENTER" },
+      { x: 380, y: 380, w: 100, h: 14, points: 300, lit: 0, text: "RIGHT" }
     ];
 
     const beacons = [
-      { x: 90, y: 470, r: 16, points: 275, pulse: 0 },
-      { x: 450, y: 470, r: 16, points: 275, pulse: 0 }
+      { x: 85, y: 520, r: 16, points: 275, pulse: 0 },
+      { x: 455, y: 520, r: 16, points: 275, pulse: 0 },
+      { x: 270, y: 440, r: 14, points: 300, pulse: 0 }
     ];
 
     const slings = [
-      { a: { x: 82, y: 732 }, b: { x: 186, y: 792 }, c: { x: 86, y: 824 }, power: 1.24 },
-      { a: { x: 458, y: 732 }, b: { x: 354, y: 792 }, c: { x: 454, y: 824 }, power: 1.24 }
+      { a: { x: 90, y: 800 }, b: { x: 160, y: 850 }, c: { x: 110, y: 880 }, power: 1.24 },
+      { a: { x: 450, y: 800 }, b: { x: 380, y: 850 }, c: { x: 430, y: 880 }, power: 1.24 }
     ];
 
     const flippers = {
       left: {
-        pivot: { x: 212, y: 852 },
-        length: 110,
-        width: 18,
+        pivot: { x: 205, y: 880 },
+        length: 75,
+        width: 14,
         base: -0.34,
-        lift: -1.12,
+        lift: -1.04,
         current: -0.34
       },
       right: {
-        pivot: { x: 328, y: 852 },
-        length: 110,
-        width: 18,
+        pivot: { x: 335, y: 880 },
+        length: 75,
+        width: 14,
         base: Math.PI + 0.34,
-        lift: Math.PI + 1.12,
+        lift: Math.PI + 1.04,
         current: Math.PI + 0.34
       }
     };
 
     const walls = [
-      { ax: 28, ay: 62, bx: 28, by: 720 },
-      { ax: 28, ay: 62, bx: 142, by: 30 },
-      { ax: 142, ay: 30, bx: 270, by: 18 },
-      { ax: 270, ay: 18, bx: 398, by: 30 },
-      { ax: 398, ay: 30, bx: 472, by: 62 },
-      { ax: 472, ay: 62, bx: 472, by: 720 },
-      { ax: 28, ay: 720, bx: 110, by: 852 },
-      { ax: 110, ay: 852, bx: 188, by: 802 },
-      { ax: 472, ay: 720, bx: 430, by: 796 },
-      { ax: 430, ay: 796, bx: 352, by: 852 }
+      // Top border
+      { ax: 28, ay: 50, bx: 28, by: 400 },
+      { ax: 28, ay: 50, bx: 120, by: 28 },
+      { ax: 120, ay: 28, bx: 270, by: 20 },
+      { ax: 270, ay: 20, bx: 420, by: 28 },
+      { ax: 420, ay: 28, bx: 512, by: 50 },
+
+      // Right side (launcher area)
+      { ax: 512, ay: 50, bx: 512, by: 140 },
+      { ax: 512, ay: 140, bx: 500, by: 200 },
+      { ax: 500, ay: 200, bx: 480, by: 260 },
+      { ax: 480, ay: 260, bx: 500, by: 320 },
+      { ax: 500, ay: 320, bx: 512, by: 380 },
+      { ax: 512, ay: 380, bx: 512, by: 750 },
+
+      // Bottom right sling
+      { ax: 512, ay: 750, bx: 430, by: 800 },
+      { ax: 430, ay: 800, bx: 340, by: 850 },
+
+      // Center drain area (left sling bottom)
+      { ax: 340, ay: 850, bx: 200, by: 850 },
+
+      // Bottom left sling
+      { ax: 200, ay: 850, bx: 110, by: 800 },
+      { ax: 110, ay: 800, bx: 28, by: 750 },
+
+      // Left side (inlane)
+      { ax: 28, ay: 750, bx: 28, by: 380 },
+      { ax: 28, ay: 380, bx: 40, by: 320 },
+      { ax: 40, ay: 320, bx: 60, by: 260 },
+      { ax: 60, ay: 260, bx: 40, by: 200 },
+      { ax: 40, ay: 200, bx: 28, by: 140 },
+
+      // Launcher onramp - diagonal entry ramp
+      { ax: 500, ay: 200, bx: 480, by: 260 },
+      { ax: 480, ay: 260, bx: 460, by: 180 }
     ];
+
+    const astronauts = [
+      { x: 78, y: 540, scale: 1, wave: 0.4, points: 420, radius: 38, spin: 0, glow: 0, cooldown: 0 },
+      { x: 462, y: 548, scale: 0.92, wave: 2.1, points: 420, radius: 38, spin: 0, glow: 0, cooldown: 0 },
+      { x: 270, y: 704, scale: 0.78, wave: 1.1, points: 520, radius: 34, spin: 0, glow: 0, cooldown: 0 }
+    ];
+
+    const audio = {
+      ctx: null,
+      master: null,
+      enabled: false,
+      volume: 0.7,
+      muted: false,
+      melodyNextAt: 0,
+      melodyIndex: 0
+    };
 
     const asteroids = [
       { x: 132, y: 448, r: 16, vx: 0.7, vy: 0.35, spin: 0, spinRate: 0.03, points: 180 },
@@ -384,17 +487,122 @@
     }
 
     function resetBall() {
-      ball.x = 454;
-      ball.y = 860;
+      ball.x = launcher.holdX;
+      ball.y = launcher.holdY;
+      ball.prevX = ball.x;
+      ball.prevY = ball.y;
       ball.vx = 0;
       ball.vy = 0;
+      ball.inShooterLane = true;
+      ball.launchAssist = 0;
       ball.launched = false;
       ball.trail.length = 0;
       state.launchPower = 0;
       state.charging = false;
       state.multiplier = 1;
       state.comboTimer = 0;
-      state.message = "Charge launch rail for deployment.";
+      state.message = "Hold Space to charge the launch rail. Aim for the bumpers!";
+    }
+
+    function ensureAudio() {
+      if (audio.enabled) {
+        if (audio.ctx && audio.ctx.state === "suspended") {
+          audio.ctx.resume();
+        }
+        applyAudioVolume();
+        return;
+      }
+      const AudioCtx = window.AudioContext || window.webkitAudioContext;
+      if (!AudioCtx) {
+        return;
+      }
+      audio.ctx = new AudioCtx();
+      audio.master = audio.ctx.createGain();
+      applyAudioVolume();
+      audio.master.connect(audio.ctx.destination);
+      audio.enabled = true;
+      audio.melodyNextAt = audio.ctx.currentTime;
+      playTone("triangle", 164.8, 0.42, 0.1, 132);
+    }
+
+    function applyAudioVolume() {
+      if (!audio.master) {
+        return;
+      }
+      const target = audio.muted ? 0 : 0.34 * audio.volume;
+      audio.master.gain.value = target;
+    }
+
+    function setAudioUi() {
+      const pct = Math.round(audio.volume * 100);
+      volumeValueEl.textContent = `${pct}%`;
+      muteButton.textContent = audio.muted ? "Unmute" : "Mute";
+    }
+
+    function playTone(type, frequency, duration, gain = 0.08, slideTo = frequency) {
+      if (!audio.enabled || !audio.ctx || !audio.master) {
+        return;
+      }
+      const t0 = audio.ctx.currentTime;
+      const osc = audio.ctx.createOscillator();
+      const env = audio.ctx.createGain();
+      osc.type = type;
+      osc.frequency.setValueAtTime(frequency, t0);
+      osc.frequency.linearRampToValueAtTime(slideTo, t0 + duration);
+      env.gain.setValueAtTime(0.0001, t0);
+      env.gain.exponentialRampToValueAtTime(gain, t0 + 0.015);
+      env.gain.exponentialRampToValueAtTime(0.0001, t0 + duration);
+      osc.connect(env);
+      env.connect(audio.master);
+      osc.start(t0);
+      osc.stop(t0 + duration + 0.02);
+    }
+
+    function playNoise(duration = 0.08, gain = 0.04) {
+      if (!audio.enabled || !audio.ctx || !audio.master) {
+        return;
+      }
+      const frames = Math.floor(audio.ctx.sampleRate * duration);
+      const buffer = audio.ctx.createBuffer(1, frames, audio.ctx.sampleRate);
+      const data = buffer.getChannelData(0);
+      for (let i = 0; i < frames; i += 1) {
+        data[i] = (Math.random() * 2 - 1) * (1 - i / frames);
+      }
+      const source = audio.ctx.createBufferSource();
+      const env = audio.ctx.createGain();
+      const t0 = audio.ctx.currentTime;
+      source.buffer = buffer;
+      env.gain.setValueAtTime(gain, t0);
+      env.gain.exponentialRampToValueAtTime(0.0001, t0 + duration);
+      source.connect(env);
+      env.connect(audio.master);
+      source.start(t0);
+      source.stop(t0 + duration + 0.02);
+    }
+
+    function updateAudioBed() {
+      if (!audio.enabled || !audio.ctx) {
+        return;
+      }
+      const pattern = [130.81, 164.81, 196.0, 164.81, 146.83, 174.61, 220.0, 174.61];
+      const now = audio.ctx.currentTime;
+      while (audio.melodyNextAt <= now + 0.05) {
+        const f = pattern[audio.melodyIndex % pattern.length];
+        const osc = audio.ctx.createOscillator();
+        const env = audio.ctx.createGain();
+        osc.type = "sine";
+        osc.frequency.setValueAtTime(f, audio.melodyNextAt);
+        osc.frequency.linearRampToValueAtTime(f * 1.005, audio.melodyNextAt + 0.34);
+        env.gain.setValueAtTime(0.0001, audio.melodyNextAt);
+        env.gain.exponentialRampToValueAtTime(0.05, audio.melodyNextAt + 0.03);
+        env.gain.exponentialRampToValueAtTime(0.0001, audio.melodyNextAt + 0.32);
+        osc.connect(env);
+        env.connect(audio.master);
+        osc.start(audio.melodyNextAt);
+        osc.stop(audio.melodyNextAt + 0.34);
+        audio.melodyNextAt += 0.36;
+        audio.melodyIndex += 1;
+      }
     }
 
     function addScore(points) {
@@ -469,6 +677,67 @@
       }
     }
 
+    function applyLaunchAssist() {
+      if (ball.launchAssist <= 0) {
+        return;
+      }
+      ball.vx -= launcher.assistPush;
+      ball.launchAssist -= 1;
+    }
+
+    function updateShooterLane(launchImpulse) {
+      if (!ball.inShooterLane) {
+        return;
+      }
+
+      // Confine ball to launcher lane width
+      const minX = launcher.laneLeftX + ball.r;
+      const maxX = launcher.laneRightX - ball.r;
+      ball.x = Math.max(minX, Math.min(maxX, ball.x));
+
+      // If ball reaches upper-left area of playfield, it has successfully launched
+      if (ball.y > launcher.topExitY && ball.x < launcher.exitGuideX) {
+        ball.inShooterLane = false;
+        ball.launchAssist = launcher.assistFrames;
+      }
+
+      // Ball falls back to launcher if it doesn't have enough momentum
+      // (gravity will naturally pull weak shots back down the ramp to launcher)
+      if (ball.x > 480 && ball.y < 360 && ball.vy > 2) {
+        // Ball is rolling back toward launcher
+        ball.x = Math.min(ball.x, launcher.holdX);
+        ball.y = Math.max(ball.y, launcher.holdY);
+      }
+    }
+
+    function applyBoundaryContainment() {
+      if (ball.x - ball.r < 22) {
+        ball.x = 22 + ball.r;
+        ball.vx = Math.abs(ball.vx) * 0.88;
+      }
+
+      // Block re-entry into launcher once ball is in play
+      if (!ball.inShooterLane && ball.x > 480 && ball.y < 300) {
+        ball.x = 470 - ball.r;
+        ball.vx = -Math.abs(ball.vx) * 0.9;
+      }
+
+      if (ball.x + ball.r > 520) {
+        ball.x = 520 - ball.r;
+        ball.vx = -Math.abs(ball.vx) * 0.88;
+      }
+
+      if (ball.y - ball.r < 12) {
+        ball.y = 12 + ball.r;
+        ball.vy = Math.abs(ball.vy) * 0.82;
+      }
+
+      // If ball falls below playfield, it's lost
+      if (ball.y - ball.r > board.height + 16) {
+        loseBall();
+      }
+    }
+
     function updateFlippers() {
       const leftTarget = state.leftPressed ? flippers.left.lift : flippers.left.base;
       const rightTarget = state.rightPressed ? flippers.right.lift : flippers.right.base;
@@ -517,6 +786,8 @@
           bumper.pulse = 1;
           spawnBurst(bumper.x, bumper.y, "112,221,255", 18);
           addScore(bumper.points);
+          playTone("square", 560, 0.1, 0.055, 740);
+          playTone("triangle", 330, 0.12, 0.04, 250);
           state.message = bumper.label + " target confirmed. " + quips[Math.floor(Math.random() * quips.length)];
         }
         bumper.pulse *= 0.9;
@@ -540,6 +811,7 @@
           beacon.pulse = 1;
           spawnBurst(beacon.x, beacon.y, "255,109,116", 16);
           addScore(beacon.points);
+          playTone("triangle", 420, 0.18, 0.045, 620);
           state.message = "Beacon uplink acquired. " + quips[Math.floor(Math.random() * quips.length)];
         }
         beacon.pulse *= 0.9;
@@ -563,6 +835,7 @@
           ball.vy -= 5.2 * sling.power;
           spawnBurst(ball.x, ball.y, "255,77,225", 10);
           addScore(110);
+          playTone("sawtooth", 240, 0.11, 0.035, 190);
           state.message = "Thruster sling engaged. " + quips[Math.floor(Math.random() * quips.length)];
         }
       }
@@ -586,6 +859,7 @@
           gate.lit = 1;
           spawnBurst(ball.x, ball.y, "255,212,103", 14);
           addScore(gate.points);
+          playTone("sine", 680, 0.09, 0.03, 770);
           state.message = gate.text + " gate cleared.";
         }
         gate.lit *= 0.92;
@@ -613,8 +887,33 @@
           asteroid.vy *= -1;
           spawnBurst(asteroid.x, asteroid.y, "187,161,120", 16);
           addScore(asteroid.points);
+          playNoise(0.07, 0.03);
+          playTone("triangle", 190, 0.08, 0.03, 130);
           state.message = "Asteroid bonk detected. Nobody tell accounting.";
         }
+      }
+    }
+
+    function applyAstronautFlybys() {
+      for (const astronaut of astronauts) {
+        if (astronaut.cooldown > 0) {
+          astronaut.cooldown -= 1;
+        }
+
+        const bobY = astronaut.y + Math.sin(state.neonTick + astronaut.wave) * 5;
+        const crossedUnder = ball.prevY < bobY + 3 && ball.y >= bobY + 3;
+        const inColumn = Math.abs(ball.x - astronaut.x) < astronaut.radius;
+        if (crossedUnder && inColumn && astronaut.cooldown <= 0) {
+          astronaut.spin = Math.PI * 2;
+          astronaut.glow = 1;
+          astronaut.cooldown = 44;
+          addScore(astronaut.points);
+          playTone("square", 740, 0.09, 0.04, 940);
+          state.message = "Astronaut flyby bonus scored.";
+        }
+
+        astronaut.spin *= 0.84;
+        astronaut.glow *= 0.9;
       }
     }
 
@@ -653,46 +952,49 @@
       state.neonTick += 0.02;
       updateParticles();
 
-      if (state.introActive) {
-        return;
-      }
-
       if (!state.running) {
         return;
       }
 
       if (!ball.launched) {
-        ball.x = 454;
-        ball.y = 860 + state.launchPower * 1.8;
+        ball.x = launcher.holdX;
+        ball.y = launcher.holdY + state.launchPower * 1.8;
+        ball.prevX = ball.x;
+        ball.prevY = ball.y;
+        ball.inShooterLane = true;
+        ball.launchAssist = 0;
         if (state.charging) {
           state.launchPower = Math.min(plunger.maxCharge, state.launchPower + 0.22);
         }
         return;
       }
 
+      ball.prevX = ball.x;
+      ball.prevY = ball.y;
       ball.vy += board.gravity;
       ball.vx *= board.friction;
       ball.vy *= board.friction;
       ball.x += ball.vx;
       ball.y += ball.vy;
 
+      updateShooterLane(Math.abs(ball.vy));
+      applyLaunchAssist();
       applyWallCollisions();
+      applyBoundaryContainment();
       applyBumperCollisions();
       applyBeaconCollisions();
       applySlingCollisions();
       applyGateCollisions();
       updateAsteroids();
       applyAsteroidCollisions();
+      applyAstronautFlybys();
       applyFlipperCollision(flippers.left, state.leftPressed);
       applyFlipperCollision(flippers.right, state.rightPressed);
+      updateAudioBed();
 
       ball.trail.push({ x: ball.x, y: ball.y });
       if (ball.trail.length > 16) {
         ball.trail.shift();
-      }
-
-      if (ball.y - ball.r > board.height + 16) {
-        loseBall();
       }
 
       if (state.comboTimer > 0) {
@@ -841,14 +1143,21 @@
       ctx.restore();
     }
 
-    function drawAstronaut(x, y, scale, wave) {
+    function drawAstronaut(astronaut) {
+      const x = astronaut.x;
+      const y = astronaut.y;
+      const scale = astronaut.scale;
+      const wave = astronaut.wave;
+      const spin = astronaut.spin;
+      const glow = astronaut.glow;
       ctx.save();
       ctx.translate(x, y + Math.sin(state.neonTick + wave) * 5);
+      ctx.rotate(spin);
       ctx.scale(scale, scale);
 
       ctx.shadowColor = "rgba(112, 221, 255, 0.9)";
       ctx.shadowBlur = 12;
-      ctx.fillStyle = "rgba(238, 245, 255, 0.95)";
+      ctx.fillStyle = glow > 0.2 ? "rgba(255, 232, 143, 0.96)" : "rgba(238, 245, 255, 0.95)";
       ctx.beginPath();
       ctx.arc(0, -18, 11, 0, Math.PI * 2);
       ctx.fill();
@@ -864,7 +1173,7 @@
       ctx.arc(0, -18, 7, 0, Math.PI * 2);
       ctx.fill();
 
-      ctx.fillStyle = "rgba(255, 77, 225, 0.9)";
+      ctx.fillStyle = glow > 0.2 ? "rgba(255, 124, 66, 0.95)" : "rgba(255, 77, 225, 0.9)";
       ctx.fillRect(-8, 1, 16, 5);
       ctx.restore();
     }
@@ -959,6 +1268,9 @@
       ctx.lineCap = "round";
       ctx.beginPath();
       for (const wall of walls) {
+        if (wall.helper) {
+          continue;
+        }
         ctx.moveTo(wall.ax, wall.ay);
         ctx.lineTo(wall.bx, wall.by);
       }
@@ -968,6 +1280,9 @@
       ctx.lineWidth = 2;
       ctx.beginPath();
       for (const wall of walls) {
+        if (wall.helper) {
+          continue;
+        }
         ctx.moveTo(wall.ax, wall.ay);
         ctx.lineTo(wall.bx, wall.by);
       }
@@ -1132,6 +1447,7 @@
       ctx.strokeStyle = "rgba(129, 212, 255, 0.56)";
       ctx.strokeRect(plunger.x, plunger.y, plunger.width, plunger.height);
 
+      // Plunger shaft and knob
       ctx.fillStyle = "rgba(241, 251, 255, 0.84)";
       ctx.fillRect(plunger.x + plunger.width / 2 - 3, shaftTop, 6, knobY - shaftTop);
 
@@ -1142,9 +1458,13 @@
       ctx.strokeStyle = "rgba(255, 255, 255, 0.72)";
       ctx.stroke();
 
+      // Rocket launcher label
       ctx.fillStyle = "rgba(112, 221, 255, 0.88)";
-      ctx.font = "700 11px Segoe UI";
-      ctx.fillText("LAUNCH", plunger.x + 10, plunger.y - 8);
+      ctx.font = "700 10px Segoe UI";
+      ctx.save();
+      ctx.translate(plunger.x + plunger.width / 2, plunger.y - 12);
+      ctx.fillText("ROCKET", -18, 0);
+      ctx.restore();
       ctx.restore();
     }
 
@@ -1202,9 +1522,9 @@
       drawSpaceForceSymbol(438, 152, 1, 0.8);
       drawSpaceForceSymbol(270, 612, 1.2, 0.38);
       drawCarrier(270, 238, 1, 14);
-      drawAstronaut(78, 540, 1, 0.4);
-      drawAstronaut(462, 548, 0.92, 2.1);
-      drawAstronaut(270, 704, 0.78, 1.1);
+      for (const astronaut of astronauts) {
+        drawAstronaut(astronaut);
+      }
       drawFighter(132, 278, 0.95, -0.26, "rgba(112, 221, 255, 0.72)");
       drawFighter(408, 278, 0.95, 0.26, "rgba(112, 221, 255, 0.72)");
       drawFighter(270, 124, 0.78, 0, "rgba(255, 212, 103, 0.76)");
@@ -1225,41 +1545,6 @@
       drawBall();
       drawParticles();
       drawTextAndMarkers();
-      if (state.introActive) {
-        drawIntroOverlay();
-      }
-    }
-
-    function drawIntroOverlay() {
-      ctx.save();
-      ctx.fillStyle = "rgba(2, 6, 22, 0.84)";
-      ctx.fillRect(20, 120, 500, 690);
-      ctx.strokeStyle = "rgba(112, 221, 255, 0.6)";
-      ctx.lineWidth = 2;
-      ctx.strokeRect(20, 120, 500, 690);
-
-      ctx.fillStyle = "rgba(255, 117, 233, 0.95)";
-      ctx.font = "900 36px Segoe UI";
-      ctx.fillText("MISSION BRIEF", 150, 190);
-      ctx.fillStyle = "rgba(235, 245, 255, 0.95)";
-      ctx.font = "700 20px Segoe UI";
-      ctx.fillText("Operation: Totally Professional Pinball", 58, 236);
-
-      ctx.font = "600 16px Segoe UI";
-      ctx.fillStyle = "rgba(200, 224, 255, 0.95)";
-      ctx.fillText("- Keep the probe in orbit and smack glowing targets.", 58, 292);
-      ctx.fillText("- Dodge drifting asteroids pretending to be harmless rocks.", 58, 326);
-      ctx.fillText("- Astronaut morale rises with every ridiculous combo.", 58, 360);
-      ctx.fillText("- Do not mention the missing snack module.", 58, 394);
-
-      ctx.fillStyle = "rgba(112, 221, 255, 0.96)";
-      ctx.font = "800 24px Segoe UI";
-      ctx.fillText("Press Space or Tap to Launch Briefing", 74, 704);
-
-      drawAstronaut(120, 612, 1.2, 0);
-      drawAstronaut(420, 622, 1.1, 1.5);
-      drawCarrier(270, 560, 1.1, 18);
-      ctx.restore();
     }
 
     function updateHud() {
@@ -1271,22 +1556,23 @@
     }
 
     function launchBall() {
-      if (state.introActive) {
-        state.introActive = false;
-        state.running = true;
-        state.charging = false;
-        state.message = "Briefing complete. Show those asteroids who is in charge.";
-        return;
-      }
       if (!state.running || ball.launched) {
         return;
       }
+      ensureAudio();
       const normalized = state.launchPower / plunger.maxCharge;
       const impulse = plunger.minPower + (plunger.maxPower - plunger.minPower) * normalized;
-      ball.vx = -2.5 - normalized * 0.9;
-      ball.vy = -impulse;
+      ball.inShooterLane = true;
+      ball.x = launcher.holdX;
+      ball.y = launcher.holdY;
+      ball.launchAssist = 0;
+      // Launch toward left-downward into the playfield from top-right launcher
+      ball.vx = -impulse * 0.6 - 2.5;
+      ball.vy = impulse * 0.8 + 1.5;
       ball.launched = true;
-      state.message = "Launch successful. Please wave to the astronauts on the way up.";
+      playTone("sawtooth", 180, 0.15, 0.055, 380);
+      playNoise(0.06, 0.02);
+      state.message = "ROCKET LAUNCH! Aim for the bumpers!";
       state.charging = false;
     }
 
@@ -1303,13 +1589,20 @@
       }
 
       if (event.code === "ArrowLeft") {
+        event.preventDefault();
         state.leftPressed = true;
+        ensureAudio();
+        playTone("square", 320, 0.04, 0.02, 280);
       }
       if (event.code === "ArrowRight") {
+        event.preventDefault();
         state.rightPressed = true;
+        ensureAudio();
+        playTone("square", 340, 0.04, 0.02, 300);
       }
       if (event.code === "Space") {
-        if (state.introActive || (state.running && !ball.launched)) {
+        ensureAudio();
+        if (state.running && !ball.launched) {
           state.charging = true;
           event.preventDefault();
         }
@@ -1332,10 +1625,7 @@
     });
 
     canvas.addEventListener("pointerdown", (event) => {
-      if (state.introActive) {
-        launchBall();
-        return;
-      }
+      ensureAudio();
       if (!ball.launched && state.running) {
         state.charging = true;
         return;
@@ -1360,6 +1650,24 @@
       state.charging = false;
     });
 
+    volumeEl.addEventListener("input", () => {
+      audio.volume = Math.max(0, Math.min(1, Number(volumeEl.value) / 100));
+      if (audio.volume > 0) {
+        audio.muted = false;
+      }
+      applyAudioVolume();
+      setAudioUi();
+      ensureAudio();
+    });
+
+    muteButton.addEventListener("click", () => {
+      audio.muted = !audio.muted;
+      applyAudioVolume();
+      setAudioUi();
+      ensureAudio();
+    });
+
+    setAudioUi();
     resetBall();
     gameLoop();
   </script>
