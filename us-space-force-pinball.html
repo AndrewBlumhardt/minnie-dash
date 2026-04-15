@@ -366,11 +366,7 @@
       { x: 351, y: 352, r: 23, points: 220, pulse: 0, label: "COM" }
     ];
 
-    const gates = [
-      { x: 80, y: 112, w: 112, h: 14, points: 300, lit: 0, text: "ALPHA" },
-      { x: 214, y: 88, w: 112, h: 14, points: 400, lit: 0, text: "SPACE" },
-      { x: 348, y: 112, w: 112, h: 14, points: 300, lit: 0, text: "FORCE" }
-    ];
+    const gates = [];
 
     const beacons = [
       { x: 90, y: 470, r: 16, points: 275, pulse: 0 },
@@ -584,6 +580,9 @@
       state.canRestart = false;
       state.introActive = false;
       state.message = "Hold Space to charge the launch rail.";
+      state.leftPressed = false;
+      state.rightPressed = false;
+      state.charging = false;
       particles.length = 0;
       resetBall();
     }
@@ -630,6 +629,21 @@
     }
 
     function applyBoundaryContainment() {
+      if (ball.x - ball.r < 22) {
+        ball.x = 22 + ball.r;
+        ball.vx = Math.abs(ball.vx) * 0.88;
+      }
+
+      if (ball.x + ball.r > 500) {
+        ball.x = 500 - ball.r;
+        ball.vx = -Math.abs(ball.vx) * 0.88;
+      }
+
+      if (ball.y - ball.r < 12) {
+        ball.y = 12 + ball.r;
+        ball.vy = Math.abs(ball.vy) * 0.82;
+      }
+
       // Prevent re-entry into shooter lane after ball is in play.
       if (!ball.inShooterLane && ball.y > launcher.antiReentryY && ball.x + ball.r > launcher.laneLeftX) {
         ball.x = launcher.laneLeftX - ball.r;
@@ -901,6 +915,14 @@
       applyAsteroidCollisions();
       applyFlipperCollision(flippers.left, state.leftPressed);
       applyFlipperCollision(flippers.right, state.rightPressed);
+
+      // Safety catch for rare tunneling escapes through geometry seams.
+      if (ball.x < -40 || ball.x > board.width + 40 || ball.y < -80) {
+        ball.x = Math.max(ball.r + 24, Math.min(board.width - ball.r - 24, ball.x));
+        ball.y = Math.max(ball.r + 24, ball.y);
+        ball.vx *= -0.6;
+        ball.vy = Math.max(2, Math.abs(ball.vy) * 0.6);
+      }
 
       ball.trail.push({ x: ball.x, y: ball.y });
       if (ball.trail.length > 16) {
@@ -1390,10 +1412,9 @@
       ctx.shadowColor = "rgba(112, 221, 255, 0.65)";
       ctx.shadowBlur = 15;
       ctx.fillText("US SPACE FORCE", 150, 58);
-      ctx.font = "600 12px Segoe UI";
-      ctx.fillStyle = "rgba(255, 117, 233, 0.86)";
-      ctx.fillText("ORBITAL FLIGHT COMMAND", 182, 80);
-      ctx.fillText("TOTALLY NORMAL NEON PINBALL", 160, 95);
+      ctx.font = "700 12px Segoe UI";
+      ctx.fillStyle = "rgba(112, 221, 255, 0.86)";
+      ctx.fillText("SEMPER SUPRA", 226, 82);
       ctx.shadowBlur = 0;
 
       if (!state.running) {
@@ -1420,13 +1441,13 @@
       drawFighter(132, 278, 0.95, -0.26, "rgba(112, 221, 255, 0.72)");
       drawFighter(408, 278, 0.95, 0.26, "rgba(112, 221, 255, 0.72)");
       drawFighter(270, 124, 0.78, 0, "rgba(255, 212, 103, 0.76)");
+      drawSpaceForceSymbol(270, 455, 1.05, 0.45);
     }
 
     function render() {
       ctx.clearRect(0, 0, board.width, board.height);
       drawBoardArt();
       drawWalls();
-      drawGates();
       drawBumpers();
       drawBeacons();
       drawAsteroids();
@@ -1538,7 +1559,7 @@
           event.preventDefault();
         }
       }
-      if (event.code === "Enter" && state.canRestart) {
+      if (event.code === "Enter" && (!state.running || state.canRestart)) {
         restartGame();
       }
     });
