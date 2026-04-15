@@ -264,7 +264,7 @@
       rightPressed: false,
       canRestart: false,
       neonTick: 0,
-      introActive: true,
+      introActive: false,
       message: "Hold Space to charge the launch rail."
     };
 
@@ -278,23 +278,38 @@
 
     bestEl.textContent = String(state.best);
 
+    const launcher = {
+      holdX: 486,
+      holdY: 860,
+      laneLeftX: 472,
+      laneRightX: 500,
+      topExitY: 258,
+      antiReentryY: 280,
+      exitGuideX: 446,
+      exitGuideY: 196,
+      assistFrames: 20,
+      assistPush: 0.2
+    };
+
     const ball = {
-      x: 454,
-      y: 860,
+      x: launcher.holdX,
+      y: launcher.holdY,
       vx: 0,
       vy: 0,
       r: 10,
+      inShooterLane: true,
+      launchAssist: 0,
       launched: false,
       trail: []
     };
 
     const plunger = {
-      x: 430,
+      x: 476,
       y: 760,
-      width: 68,
+      width: 20,
       height: 154,
-      minPower: 4.5,
-      maxPower: 18.5,
+      minPower: 5.8,
+      maxPower: 20.4,
       maxCharge: 34
     };
 
@@ -318,23 +333,23 @@
     ];
 
     const slings = [
-      { a: { x: 82, y: 732 }, b: { x: 186, y: 792 }, c: { x: 86, y: 824 }, power: 1.24 },
-      { a: { x: 458, y: 732 }, b: { x: 354, y: 792 }, c: { x: 454, y: 824 }, power: 1.24 }
+      { a: { x: 86, y: 730 }, b: { x: 186, y: 790 }, c: { x: 86, y: 824 }, power: 1.24 },
+      { a: { x: 454, y: 730 }, b: { x: 354, y: 790 }, c: { x: 454, y: 824 }, power: 1.24 }
     ];
 
     const flippers = {
       left: {
-        pivot: { x: 212, y: 852 },
-        length: 110,
-        width: 18,
+        pivot: { x: 204, y: 852 },
+        length: 84,
+        width: 16,
         base: -0.34,
         lift: -1.12,
         current: -0.34
       },
       right: {
-        pivot: { x: 328, y: 852 },
-        length: 110,
-        width: 18,
+        pivot: { x: 336, y: 852 },
+        length: 84,
+        width: 16,
         base: Math.PI + 0.34,
         lift: Math.PI + 1.12,
         current: Math.PI + 0.34
@@ -347,11 +362,19 @@
       { ax: 142, ay: 30, bx: 270, by: 18 },
       { ax: 270, ay: 18, bx: 398, by: 30 },
       { ax: 398, ay: 30, bx: 472, by: 62 },
-      { ax: 472, ay: 62, bx: 472, by: 720 },
-      { ax: 28, ay: 720, bx: 110, by: 852 },
-      { ax: 110, ay: 852, bx: 188, by: 802 },
-      { ax: 472, ay: 720, bx: 430, by: 796 },
-      { ax: 430, ay: 796, bx: 352, by: 852 }
+      // Right shooter lane runs the full length.
+      { ax: 500, ay: 62, bx: 500, by: 914 },
+      { ax: 472, ay: 914, bx: 500, by: 914 },
+      { ax: 472, ay: 62, bx: 472, by: 136 },
+      { ax: 472, ay: 252, bx: 472, by: 720 },
+      // Curved-style exit from lane into playfield.
+      { ax: 472, ay: 136, bx: 446, by: 196 },
+      { ax: 446, ay: 196, bx: 472, by: 252 },
+      // Symmetric lower borders feeding flippers.
+      { ax: 28, ay: 720, bx: 112, by: 848 },
+      { ax: 112, ay: 848, bx: 202, by: 802 },
+      { ax: 472, ay: 720, bx: 428, by: 802 },
+      { ax: 428, ay: 802, bx: 338, by: 848 }
     ];
 
     const asteroids = [
@@ -384,10 +407,12 @@
     }
 
     function resetBall() {
-      ball.x = 454;
-      ball.y = 860;
+      ball.x = launcher.holdX;
+      ball.y = launcher.holdY;
       ball.vx = 0;
       ball.vy = 0;
+      ball.inShooterLane = true;
+      ball.launchAssist = 0;
       ball.launched = false;
       ball.trail.length = 0;
       state.launchPower = 0;
@@ -431,6 +456,55 @@
       state.message = "Hold Space to charge the launch rail.";
       particles.length = 0;
       resetBall();
+    }
+
+    function applyLaunchAssist() {
+      if (ball.launchAssist <= 0) {
+        return;
+      }
+      ball.vx -= launcher.assistPush;
+      ball.launchAssist -= 1;
+    }
+
+    function updateShooterLane(launchImpulse) {
+      if (!ball.inShooterLane) {
+        return;
+      }
+
+      const minX = launcher.laneLeftX + ball.r;
+      const maxX = launcher.laneRightX - ball.r;
+      ball.x = Math.max(minX, Math.min(maxX, ball.x));
+
+      // Successful launch exits via the curved ramp at top-right.
+      if (ball.y <= launcher.topExitY) {
+        ball.inShooterLane = false;
+        ball.x = launcher.exitGuideX;
+        ball.y = launcher.exitGuideY;
+        ball.vx = -Math.max(2.8, launchImpulse * 0.28);
+        ball.vy = Math.min(ball.vy, -6.2);
+        ball.launchAssist = launcher.assistFrames;
+        return;
+      }
+
+      // Weak launch falls back to plunger so the same ball can be retried.
+      if (ball.vy > 0 && ball.y >= launcher.holdY - 2) {
+        ball.x = launcher.holdX;
+        ball.y = launcher.holdY;
+        ball.vx = 0;
+        ball.vy = 0;
+        ball.launched = false;
+        state.launchPower = 0;
+        state.charging = false;
+        state.message = "Launch fell back - recharge and try again.";
+      }
+    }
+
+    function applyBoundaryContainment() {
+      // Prevent re-entry into shooter lane after ball is in play.
+      if (!ball.inShooterLane && ball.y > launcher.antiReentryY && ball.x + ball.r > launcher.laneLeftX) {
+        ball.x = launcher.laneLeftX - ball.r;
+        ball.vx = -Math.abs(ball.vx) * 0.9;
+      }
     }
 
     function distanceToSegment(px, py, x1, y1, x2, y2) {
@@ -662,8 +736,10 @@
       }
 
       if (!ball.launched) {
-        ball.x = 454;
-        ball.y = 860 + state.launchPower * 1.8;
+        ball.x = launcher.holdX;
+        ball.y = launcher.holdY + state.launchPower * 1.8;
+        ball.inShooterLane = true;
+        ball.launchAssist = 0;
         if (state.charging) {
           state.launchPower = Math.min(plunger.maxCharge, state.launchPower + 0.22);
         }
@@ -676,7 +752,10 @@
       ball.x += ball.vx;
       ball.y += ball.vy;
 
+      updateShooterLane(Math.abs(ball.vy));
+      applyLaunchAssist();
       applyWallCollisions();
+      applyBoundaryContainment();
       applyBumperCollisions();
       applyBeaconCollisions();
       applySlingCollisions();
@@ -1283,7 +1362,11 @@
       }
       const normalized = state.launchPower / plunger.maxCharge;
       const impulse = plunger.minPower + (plunger.maxPower - plunger.minPower) * normalized;
-      ball.vx = -2.5 - normalized * 0.9;
+      ball.inShooterLane = true;
+      ball.x = launcher.holdX;
+      ball.y = launcher.holdY;
+      ball.launchAssist = 0;
+      ball.vx = -0.6 - normalized * 0.2;
       ball.vy = -impulse;
       ball.launched = true;
       state.message = "Launch successful. Please wave to the astronauts on the way up.";
