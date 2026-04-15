@@ -12,6 +12,576 @@
       --line: rgba(129, 212, 255, 0.48);
       --cyan: #70ddff;
       --pink: #ff4de1;
+      --gold: #ffd467;
+      --ink: #eaf5ff;
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      min-height: 100vh;
+      display: grid;
+      place-items: center;
+      font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
+      color: var(--ink);
+      background: linear-gradient(160deg, var(--bg-1), #07112a 42%, var(--bg-2));
+      overflow-x: hidden;
+    }
+
+    .layout {
+      width: min(96vw, 1020px);
+      display: grid;
+      grid-template-columns: minmax(240px, 290px) minmax(320px, 1fr);
+      gap: 18px;
+      padding: 16px;
+      z-index: 1;
+    }
+
+    .panel, .board-wrap {
+      background: var(--panel);
+      border: 1px solid var(--line);
+      box-shadow: 0 0 22px rgba(112, 221, 255, 0.28);
+      backdrop-filter: blur(8px);
+    }
+
+    .panel { border-radius: 18px; padding: 18px; }
+    .board-wrap { border-radius: 16px; overflow: hidden; }
+
+    canvas {
+      width: 100%;
+      height: auto;
+      display: block;
+      background: linear-gradient(180deg, #0a163c 0%, #08112d 58%, #060b1d 100%);
+    }
+
+    .title { margin: 0 0 16px 0; font-size: 18px; }
+    .stats { list-style: none; margin: 0 0 16px 0; padding: 0; }
+    .stats li { display: flex; justify-content: space-between; margin-bottom: 8px; }
+    .stats strong { font-variant-numeric: tabular-nums; }
+
+    .controls, .notes {
+      margin: 16px 0;
+      padding: 12px;
+      background: rgba(112, 221, 255, 0.08);
+      border-radius: 8px;
+      font-size: 13px;
+      line-height: 1.6;
+    }
+
+    .volume-controls {
+      margin: 16px 0;
+      padding: 12px;
+      background: rgba(255, 77, 225, 0.08);
+      border-radius: 8px;
+    }
+
+    .volume-row { display: flex; gap: 8px; align-items: center; margin-bottom: 8px; }
+    .volume-row b { flex: 0 0 auto; }
+    .volume-row span { flex: 1; text-align: right; font-variant-numeric: tabular-nums; }
+    .volume-row button { flex: 0 0 auto; padding: 4px 12px; font-size: 12px; background: var(--cyan); color: var(--bg-1); border: none; border-radius: 4px; cursor: pointer; }
+
+    input[type="range"] { width: 100%; }
+
+    .status { font-size: 12px; color: var(--muted); margin-top: 12px; }
+
+    @media (max-width: 920px) {
+      .layout { grid-template-columns: 1fr; }
+      .panel { order: 2; }
+      .board-wrap { order: 1; }
+    }
+  </style>
+</head>
+<body>
+  <main class="layout">
+    <aside class="panel" aria-live="polite">
+      <h1 class="title">Orbital Guardian<br/><span style="font-size: 12px; font-weight: normal; color: var(--muted); --muted: #9cb7db;">Classic pinball</span></h1>
+
+      <ul class="stats">
+        <li><span>Score</span><strong id="score">0</strong></li>
+        <li><span>Best</span><strong id="best">0</strong></li>
+        <li><span>Balls</span><strong id="balls">3</strong></li>
+      </ul>
+
+      <section class="controls">
+        <div><b>Launch:</b> Space (hold and release)</div>
+        <div><b>Left Paddle:</b> Left Arrow or Z</div>
+        <div><b>Right Paddle:</b> Right Arrow or X</div>
+        <div><b>Restart:</b> Enter</div>
+      </section>
+
+      <section class="volume-controls">
+        <div class="volume-row">
+          <b>Volume</b>
+          <span id="volumeValue">70%</span>
+          <button id="muteButton">Mute</button>
+        </div>
+        <input id="volume" type="range" min="0" max="100" value="70" step="1" />
+      </section>
+
+      <section class="notes">
+        <div><b>How to play:</b> Launch the ball up the ramp into the playfield. Hit bumpers for points. Use paddles to keep the ball in play. Ball falls through center drain = game over.</div>
+      </section>
+
+      <div class="status" id="status">Press Space to launch.</div>
+    </aside>
+
+    <section class="board-wrap">
+      <canvas id="game" width="280" height="420" role="img" aria-label="Pinball playfield"></canvas>
+    </section>
+  </main>
+
+  <script>
+    const canvas = document.getElementById("game");
+    const ctx = canvas.getContext("2d");
+
+    const scoreEl = document.getElementById("score");
+    const bestEl = document.getElementById("best");
+    const ballsEl = document.getElementById("balls");
+    const statusEl = document.getElementById("status");
+    const volumeEl = document.getElementById("volume");
+    const volumeValueEl = document.getElementById("volumeValue");
+    const muteButton = document.getElementById("muteButton");
+
+    // Physics constants
+    const physics = {
+      gravity: 0.25,
+      friction: 0.995,
+      bounce: 0.85
+    };
+
+    // Game state
+    const game = {
+      running: true,
+      score: 0,
+      best: parseInt(localStorage.getItem("pinballBest") || "0"),
+      balls: 3,
+      launchPower: 0,
+      charging: false,
+      gameOver: false
+    };
+
+    // Ball
+    const ball = {
+      x: 30,
+      y: 380,
+      vx: 0,
+      vy: 0,
+      radius: 4
+    };
+
+    // Plunger (spring launcher)
+    const plunger = {
+      x: 30,
+      y: 380,
+      power: 0,
+      maxPower: 20,
+      launched: false
+    };
+
+    // Paddles (flippers)
+    const paddles = {
+      left: {
+        x: 90,
+        y: 385,
+        length: 40,
+        width: 8,
+        angle: -0.5,
+        targetAngle: -0.5,
+        cooldown: 0
+      },
+      right: {
+        x: 190,
+        y: 385,
+        length: 40,
+        width: 8,
+        angle: 0.5,
+        targetAngle: 0.5,
+        cooldown: 0
+      }
+    };
+
+    // Bumpers (interactive obstacles)
+    const bumpers = [
+      { x: 70, y: 100, r: 12, points: 100, active: false, cooldown: 0 },
+      { x: 140, y: 80, r: 12, points: 150, active: false, cooldown: 0 },
+      { x: 210, y: 100, r: 12, points: 100, active: false, cooldown: 0 },
+      { x: 70, y: 180, r: 10, points: 75, active: false, cooldown: 0 },
+      { x: 140, y: 200, r: 10, points: 75, active: false, cooldown: 0 },
+      { x: 210, y: 180, r: 10, points: 75, active: false, cooldown: 0 }
+    ];
+
+    // Walls (boundaries and ramps)
+    const walls = [
+      // Outer bounds
+      { x1: 10, y1: 10, x2: 10, y2: 380 },     // Left wall
+      { x1: 10, y1: 10, x2: 270, y2: 10 },     // Top wall
+      { x1: 270, y1: 10, x2: 270, y2: 380 },   // Right wall
+
+      // Launch ramp (diagonal from bottom-left going up-right)
+      { x1: 30, y1: 390, x2: 80, y2: 300 },    // Ramp curve start
+
+      // Bumper field walls (guide ball around bumpers)
+      { x1: 50, y1: 120, x2: 130, y2: 120 },   // Upper left barrier
+      { x1: 150, y1: 120, x2: 230, y2: 120 }   // Upper right barrier
+    ];
+
+    // Audio
+    const audio = {
+      ctx: null,
+      master: null,
+      enabled: false,
+      volume: 0.7,
+      muted: false
+    };
+
+    function ensureAudio() {
+      if (audio.enabled) return;
+      const AudioCtx = window.AudioContext || window.webkitAudioContext;
+      if (!AudioCtx) return;
+      audio.ctx = new AudioCtx();
+      audio.master = audio.ctx.createGain();
+      audio.master.connect(audio.ctx.destination);
+      updateAudioVolume();
+      audio.enabled = true;
+    }
+
+    function updateAudioVolume() {
+      if (!audio.master) return;
+      audio.master.gain.value = audio.muted ? 0 : audio.volume * 0.3;
+    }
+
+    function playSound(freq, duration, type = "sine") {
+      if (!audio.enabled || !audio.ctx) return;
+      const osc = audio.ctx.createOscillator();
+      const env = audio.ctx.createGain();
+      osc.type = type;
+      osc.frequency.value = freq;
+      env.gain.setValueAtTime(0.05, audio.ctx.currentTime);
+      env.gain.exponentialRampToValueAtTime(0.001, audio.ctx.currentTime + duration);
+      osc.connect(env);
+      env.connect(audio.master);
+      osc.start(audio.ctx.currentTime);
+      osc.stop(audio.ctx.currentTime + duration);
+    }
+
+    function resetBall() {
+      ball.x = plunger.x;
+      ball.y = plunger.y;
+      ball.vx = 0;
+      ball.vy = 0;
+      plunger.power = 0;
+      plunger.launched = false;
+      game.charging = false;
+      statusEl.textContent = "Press Space to launch.";
+    }
+
+    function launchBall() {
+      if (plunger.launched || !game.running) return;
+      ensureAudio();
+      const impulse = plunger.power * 0.8;
+      ball.vx = 1 + impulse * 0.3;
+      ball.vy = -impulse;
+      plunger.launched = true;
+      game.charging = false;
+      playSound(200, 0.1, "square");
+      statusEl.textContent = "Ball launched!";
+    }
+
+    function checkBumperCollision(bumper) {
+      const dx = ball.x - bumper.x;
+      const dy = ball.y - bumper.y;
+      const dist = Math.hypot(dx, dy);
+      const minDist = ball.radius + bumper.r;
+
+      if (dist < minDist && bumper.cooldown <= 0) {
+        const nx = dx / dist;
+        const ny = dy / dist;
+        ball.x = bumper.x + nx * minDist;
+        ball.y = bumper.y + ny * minDist;
+        const speed = Math.max(3, Math.hypot(ball.vx, ball.vy));
+        ball.vx = nx * speed;
+        ball.vy = ny * speed;
+        game.score += bumper.points;
+        bumper.cooldown = 10;
+        playSound(400 + Math.random() * 200, 0.08, "triangle");
+        statusEl.textContent = `+${bumper.points} points!`;
+      }
+
+      if (bumper.cooldown > 0) {
+        bumper.cooldown--;
+      }
+    }
+
+    function checkWallCollision(wall) {
+      const dx = wall.x2 - wall.x1;
+      const dy = wall.y2 - wall.y1;
+      const fx = ball.x - wall.x1;
+      const fy = ball.y - wall.y1;
+      const lenSq = dx * dx + dy * dy;
+      let t = (fx * dx + fy * dy) / lenSq;
+      t = Math.max(0, Math.min(1, t));
+      const px = wall.x1 + t * dx;
+      const py = wall.y1 + t * dy;
+      const dist = Math.hypot(ball.x - px, ball.y - py);
+
+      if (dist < ball.radius) {
+        const nx = (ball.x - px) / (dist || 1);
+        const ny = (ball.y - py) / (dist || 1);
+        ball.x = px + nx * ball.radius;
+        ball.y = py + ny * ball.radius;
+        const dot = ball.vx * nx + ball.vy * ny;
+        if (dot < 0) {
+          ball.vx -= (1 + physics.bounce) * dot * nx;
+          ball.vy -= (1 + physics.bounce) * dot * ny;
+        }
+      }
+    }
+
+    function checkPaddleCollision(paddle) {
+      if (paddle.cooldown > 0) {
+        paddle.cooldown--;
+        return;
+      }
+
+      const px = paddle.x + Math.cos(paddle.angle) * paddle.length * 0.5;
+      const py = paddle.y + Math.sin(paddle.angle) * paddle.length * 0.5;
+      const dx = Math.cos(paddle.angle) * paddle.length;
+      const dy = Math.sin(paddle.angle) * paddle.length;
+      const fx = ball.x - (paddle.x - dx * 0.5);
+      const fy = ball.y - (paddle.y - dy * 0.5);
+      const lenSq = dx * dx + dy * dy;
+      let t = (fx * dx + fy * dy) / lenSq;
+      t = Math.max(-0.5, Math.min(1.5, t));
+      const px2 = (paddle.x - dx * 0.5) + t * dx;
+      const py2 = (paddle.y - dy * 0.5) + t * dy;
+      const dist = Math.hypot(ball.x - px2, ball.y - py2);
+
+      if (dist < ball.radius + paddle.width * 0.5) {
+        const nx = (ball.x - px2) / (dist || 1);
+        const ny = (ball.y - py2) / (dist || 1);
+        ball.x = px2 + nx * (ball.radius + paddle.width * 0.5);
+        ball.y = py2 + ny * (ball.radius + paddle.width * 0.5);
+
+        // Launch velocity depends on paddle angle and movement
+        const launchPower = 8 + Math.abs(paddle.targetAngle - paddle.angle) * 5;
+        ball.vx = Math.cos(paddle.angle + (paddle === paddles.left ? 1 : -1)) * launchPower;
+        ball.vy = Math.sin(paddle.angle + (paddle === paddles.left ? 1 : -1)) * launchPower;
+
+        paddle.cooldown = 15;
+        playSound(300, 0.12, "square");
+      }
+    }
+
+    function update() {
+      if (!game.running) return;
+
+      // Handle launch
+      if (!plunger.launched) {
+        if (game.charging) {
+          plunger.power = Math.min(plunger.maxPower, plunger.power + 0.4);
+        }
+        ball.x = plunger.x;
+        ball.y = plunger.y;
+        return;
+      }
+
+      // Physics
+      ball.vy += physics.gravity;
+      ball.vx *= physics.friction;
+      ball.vy *= physics.friction;
+      ball.x += ball.vx;
+      ball.y += ball.vy;
+
+      // Boundary checks
+      if (ball.x - ball.radius < 10) {
+        ball.x = 10 + ball.radius;
+        ball.vx *= -physics.bounce;
+      }
+      if (ball.x + ball.radius > 270) {
+        ball.x = 270 - ball.radius;
+        ball.vx *= -physics.bounce;
+      }
+      if (ball.y - ball.radius < 10) {
+        ball.y = 10 + ball.radius;
+        ball.vy *= -physics.bounce;
+      }
+
+      // Collision detection
+      for (const bumper of bumpers) {
+        checkBumperCollision(bumper);
+      }
+      for (const wall of walls) {
+        checkWallCollision(wall);
+      }
+      checkPaddleCollision(paddles.left);
+      checkPaddleCollision(paddles.right);
+
+      // Drain (center gap at bottom)
+      if (ball.y > 390) {
+        if ((ball.x > 110 && ball.x < 170)) {
+          // Ball fell through drain
+          game.balls--;
+          if (game.balls <= 0) {
+            game.running = false;
+            game.gameOver = true;
+            if (game.score > game.best) {
+              game.best = game.score;
+              localStorage.setItem("pinballBest", String(game.best));
+            }
+            statusEl.textContent = "Game Over! Press Enter to restart.";
+          } else {
+            resetBall();
+          }
+        }
+      }
+
+      // Update paddle angles
+      paddles.left.angle += (paddles.left.targetAngle - paddles.left.angle) * 0.3;
+      paddles.right.angle += (paddles.right.targetAngle - paddles.right.angle) * 0.3;
+    }
+
+    function render() {
+      ctx.fillStyle = "#0a0a1a";
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+      // Draw walls
+      ctx.strokeStyle = "rgba(112, 221, 255, 0.6)";
+      ctx.lineWidth = 3;
+      for (const wall of walls) {
+        ctx.beginPath();
+        ctx.moveTo(wall.x1, wall.y1);
+        ctx.lineTo(wall.x2, wall.y2);
+        ctx.stroke();
+      }
+
+      // Draw bumpers
+      for (const bumper of bumpers) {
+        ctx.fillStyle = bumper.cooldown > 0 ? "rgba(255, 212, 103, 0.8)" : "rgba(255, 212, 103, 0.4)";
+        ctx.beginPath();
+        ctx.arc(bumper.x, bumper.y, bumper.r, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.strokeStyle = "rgba(255, 255, 255, 0.8)";
+        ctx.lineWidth = 2;
+        ctx.stroke();
+      }
+
+      // Draw paddles
+      for (const paddle of [paddles.left, paddles.right]) {
+        ctx.save();
+        ctx.translate(paddle.x, paddle.y);
+        ctx.rotate(paddle.angle);
+        ctx.fillStyle = "rgba(112, 221, 255, 0.7)";
+        ctx.fillRect(-paddle.length * 0.5, -paddle.width * 0.5, paddle.length, paddle.width);
+        ctx.restore();
+      }
+
+      // Draw ball
+      ctx.fillStyle = "rgba(255, 255, 255, 0.9)";
+      ctx.beginPath();
+      ctx.arc(ball.x, ball.y, ball.radius, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.strokeStyle = "rgba(112, 221, 255, 0.6)";
+      ctx.lineWidth = 1;
+      ctx.stroke();
+
+      // Draw plunger
+      if (!plunger.launched) {
+        ctx.fillStyle = "rgba(255, 109, 116, 0.6)";
+        ctx.fillRect(plunger.x - 4, plunger.y - 20 - plunger.power, 8, 20 + plunger.power);
+        ctx.strokeStyle = "rgba(255, 255, 255, 0.8)";
+        ctx.lineWidth = 1;
+        ctx.strokeRect(plunger.x - 4, plunger.y - 20 - plunger.power, 8, 20 + plunger.power);
+      }
+
+      // Draw title
+      ctx.fillStyle = "rgba(112, 221, 255, 0.8)";
+      ctx.font = "bold 12px Segoe UI";
+      ctx.fillText("ORBITAL GUARDIAN", 85, 20);
+    }
+
+    function updateHud() {
+      scoreEl.textContent = String(game.score);
+      bestEl.textContent = String(game.best);
+      ballsEl.textContent = String(game.balls);
+    }
+
+    function gameLoop() {
+      update();
+      render();
+      updateHud();
+      requestAnimationFrame(gameLoop);
+    }
+
+    // Input handling
+    document.addEventListener("keydown", (e) => {
+      if (e.code === "Space" && !plunger.launched && game.running) {
+        game.charging = true;
+        e.preventDefault();
+      }
+      if ((e.code === "ArrowLeft" || e.code === "KeyZ") && game.running) {
+        paddles.left.targetAngle = -1.2;
+        ensureAudio();
+        playSound(250, 0.05);
+      }
+      if ((e.code === "ArrowRight" || e.code === "KeyX") && game.running) {
+        paddles.right.targetAngle = 1.2;
+        ensureAudio();
+        playSound(280, 0.05);
+      }
+      if (e.code === "Enter" && game.gameOver) {
+        game.running = true;
+        game.gameOver = false;
+        game.score = 0;
+        game.balls = 3;
+        resetBall();
+      }
+    });
+
+    document.addEventListener("keyup", (e) => {
+      if (e.code === "Space") {
+        launchBall();
+      }
+      if (e.code === "ArrowLeft" || e.code === "KeyZ") {
+        paddles.left.targetAngle = -0.5;
+      }
+      if (e.code === "ArrowRight" || e.code === "KeyX") {
+        paddles.right.targetAngle = 0.5;
+      }
+    });
+
+    // Volume controls
+    volumeEl.addEventListener("input", (e) => {
+      audio.volume = parseInt(e.target.value) / 100;
+      volumeValueEl.textContent = e.target.value + "%";
+      updateAudioVolume();
+    });
+
+    muteButton.addEventListener("click", () => {
+      audio.muted = !audio.muted;
+      muteButton.textContent = audio.muted ? "Unmute" : "Mute";
+      updateAudioVolume();
+    });
+
+    bestEl.textContent = String(game.best);
+    gameLoop();
+  </script>
+</body>
+</html>
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Orbital Guardian Pinball</title>
+  <style>
+    :root {
+      --bg-1: #040814;
+      --bg-2: #071a3f;
+      --panel: rgba(7, 17, 43, 0.88);
+      --line: rgba(129, 212, 255, 0.48);
+      --cyan: #70ddff;
+      --pink: #ff4de1;
       --violet: #8d6cff;
       --gold: #ffd467;
       --red: #ff6d74;
