@@ -273,7 +273,7 @@
     </aside>
 
     <section class="board-wrap">
-      <canvas id="game" width="640" height="1120" role="img" aria-label="Pinball board shaped like a spacecraft in flight"></canvas>
+      <canvas id="game" width="700" height="1240" role="img" aria-label="Pinball board shaped like a spacecraft in flight"></canvas>
     </section>
   </main>
 
@@ -325,7 +325,29 @@
       "Neon mode engaged. Sunglasses recommended.",
       "Ground control says this is totally within budget.",
       "Flight deck cat says this is a purr-fect trajectory.",
-      "Mission note: less screaming, more pinball precision."
+      "Mission note: less screaming, more pinball precision.",
+      "Guardian wisdom: if it glows, hit it responsibly.",
+      "Space superiority achieved, mostly by ricochet.",
+      "Telemetry says that bounce was 12 percent skill.",
+      "Someone at Cape Canaveral just nodded approvingly.",
+      "Orbital mechanics are just geometry with confidence.",
+      "Mission Control requests fewer asteroid introductions.",
+      "Semper Supra, and also semper combo.",
+      "Range safety confirms this launch is delightfully chaotic.",
+      "The launch director called that one aggressively nominal.",
+      "Latest crew-return briefing: still no snacks in orbit.",
+      "Lunar flyby mood: dramatic, accurate, slightly overcaffeinated.",
+      "Delta patch vibes detected. Style points awarded.",
+      "Satellite ops reports your flipper timing is suspiciously elite.",
+      "Ground station note: stop high-fiving asteroids.",
+      "Mission update: gravity remains rude but predictable.",
+      "Command says this counts as advanced trajectory research.",
+      "Space domain awareness now includes your lucky bounces.",
+      "Guidance computer says: wow, okay, that worked.",
+      "Official report: zero debris complaints so far.",
+      "Crew morale increased after that absurd rebound.",
+      "Counterspace threat neutralized by excellent flipper sass.",
+      "Your probe just filed for frequent-flyer status."
     ];
 
     bestEl.textContent = String(state.best);
@@ -430,7 +452,7 @@
     const upperFlippers = [
       {
         side: "left",
-        pivot: { x: 102, y: 498 },
+        pivot: { x: 56, y: 412 },
         length: 54,
         width: 11,
         base: 0.22,
@@ -439,7 +461,7 @@
       },
       {
         side: "right",
-        pivot: { x: 458, y: 498 },
+        pivot: { x: 484, y: 412 },
         length: 54,
         width: 11,
         base: Math.PI - 0.22,
@@ -465,6 +487,7 @@
       // Symmetric lower borders feeding flippers.
       { ax: 28, ay: 720, bx: 112, by: 848 },
       { ax: 112, ay: 848, bx: 194, by: 812 },
+      { ax: 472, ay: 720, bx: 486, by: 720 },
       { ax: 472, ay: 720, bx: 428, by: 848 },
       { ax: 428, ay: 848, bx: 346, by: 812 }
     ];
@@ -537,21 +560,17 @@
     function applyBoardScale() {
       const sourceWidth = 560;
       const sourceHeight = 1000;
-      const sx = 1.08;
-      const sy = 1.08;
+      const sx = 1.16;
+      const sy = 1.16;
       const s = (sx + sy) * 0.5;
-      const ox = (board.width - sourceWidth * sx) * 0.5;
+      const coreLeft = 28;
+      const coreRight = 486;
+      const coreCenter = (coreLeft + coreRight) * 0.5;
+      const ox = board.width * 0.5 - coreCenter * sx;
       const oy = (board.height - sourceHeight * sy) * 0.5;
 
       const tx = (x) => x * sx + ox;
       const ty = (y) => y * sy + oy;
-      const scaleCircle = (o, keys) => {
-        for (const key of keys) {
-          if (typeof o[key] === "number") {
-            o[key] *= s;
-          }
-        }
-      };
 
       launcher.holdX = tx(launcher.holdX);
       launcher.holdY = ty(launcher.holdY);
@@ -1551,7 +1570,11 @@
       ctx.font = "700 10px Segoe UI";
       ctx.fillText("VANDENBERG", 54, 286);
       ctx.fillText("PETERSON", 392, 286);
-      ctx.fillText("CAPE CANAVERAL", 198, 968);
+
+      const railMid = (launcher.laneLeftX + launcher.laneRightX) * 0.5;
+      const capeText = "CAPE CANAVERAL";
+      const textWidth = ctx.measureText(capeText).width;
+      ctx.fillText(capeText, railMid - textWidth * 0.5, plunger.y + plunger.height + 26);
 
       ctx.fillStyle = "rgba(255, 212, 103, 0.28)";
       ctx.font = "700 9px Segoe UI";
@@ -1559,6 +1582,52 @@
       ctx.fillText("COMMITMENT", 404, 596);
       ctx.fillText("CONNECTION", 56, 614);
       ctx.fillText("COURAGE", 416, 614);
+      ctx.restore();
+    }
+
+    function drawMissionPatch() {
+      const cx = board.width - 148;
+      const cy = 168;
+      const radius = 54;
+
+      ctx.save();
+      ctx.translate(cx, cy);
+
+      ctx.fillStyle = "rgba(7, 18, 49, 0.88)";
+      ctx.beginPath();
+      ctx.arc(0, 0, radius + 7, 0, Math.PI * 2);
+      ctx.fill();
+
+      ctx.strokeStyle = "rgba(112, 221, 255, 0.75)";
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.arc(0, 0, radius, 0, Math.PI * 2);
+      ctx.stroke();
+
+      ctx.strokeStyle = "rgba(255, 212, 103, 0.75)";
+      ctx.beginPath();
+      ctx.ellipse(0, 0, 40, 16, -0.48, 0, Math.PI * 2);
+      ctx.stroke();
+
+      ctx.fillStyle = "rgba(255, 212, 103, 0.9)";
+      ctx.beginPath();
+      ctx.moveTo(0, -38);
+      ctx.lineTo(15, 16);
+      ctx.lineTo(0, 8);
+      ctx.lineTo(-15, 16);
+      ctx.closePath();
+      ctx.fill();
+
+      ctx.fillStyle = "rgba(236, 245, 255, 0.92)";
+      ctx.beginPath();
+      ctx.arc(-22, -14, 2.2, 0, Math.PI * 2);
+      ctx.arc(24, -8, 1.8, 0, Math.PI * 2);
+      ctx.arc(14, 18, 1.6, 0, Math.PI * 2);
+      ctx.fill();
+
+      ctx.font = "700 8px Segoe UI";
+      ctx.fillText("MISSION 2026", -27, 42);
+      ctx.fillText("CREW RETURN", -25, 52);
       ctx.restore();
     }
 
@@ -1618,24 +1687,6 @@
         ctx.lineTo(wall.bx, wall.by);
       }
       ctx.stroke();
-
-      // Mirror lane lines on the left to preserve visual symmetry while keeping a right shooter lane.
-      const laneMid = (launcher.laneLeftX + launcher.laneRightX) * 0.5;
-      const mirrorMid = board.width * 0.5;
-      const mirrorX = (x) => mirrorMid - (x - mirrorMid);
-
-      ctx.strokeStyle = "rgba(129, 212, 255, 0.34)";
-      ctx.lineWidth = 3;
-      ctx.beginPath();
-      ctx.moveTo(mirrorX(launcher.laneLeftX), launcher.topExitY - 190);
-      ctx.lineTo(mirrorX(launcher.laneLeftX), launcher.holdY + 56);
-      ctx.moveTo(mirrorX(launcher.laneRightX), launcher.topExitY - 190);
-      ctx.lineTo(mirrorX(launcher.laneRightX), launcher.holdY + 56);
-      ctx.stroke();
-
-      ctx.fillStyle = "rgba(112, 221, 255, 0.26)";
-      ctx.font = "700 9px Segoe UI";
-      ctx.fillText("VISUAL SERVICE CHANNEL", mirrorX(laneMid) - 48, launcher.holdY + 76);
       ctx.restore();
     }
 
@@ -1850,7 +1901,7 @@
       }
 
       const velocityAngle = Math.atan2(ball.vy, ball.vx) + Math.PI * 0.5;
-      const angle = ball.launched ? velocityAngle : -Math.PI * 0.5;
+      const angle = ball.inShooterLane ? -Math.PI * 0.5 : velocityAngle;
       const scale = ball.r / 10;
 
       ctx.save();
@@ -1866,11 +1917,13 @@
       hull.addColorStop(1, "#6caee2");
       ctx.fillStyle = hull;
       ctx.beginPath();
-      ctx.moveTo(0, -12);
-      ctx.lineTo(8, 5);
-      ctx.lineTo(3, 12);
-      ctx.lineTo(-3, 12);
-      ctx.lineTo(-8, 5);
+      ctx.moveTo(0, -13);
+      ctx.lineTo(7, -2);
+      ctx.lineTo(10, 7);
+      ctx.lineTo(4, 12);
+      ctx.lineTo(-4, 12);
+      ctx.lineTo(-10, 7);
+      ctx.lineTo(-7, -2);
       ctx.closePath();
       ctx.fill();
 
@@ -1881,7 +1934,15 @@
 
       ctx.fillStyle = "rgba(255, 212, 103, 0.88)";
       ctx.beginPath();
-      ctx.arc(0, 1, 2.3, 0, Math.PI * 2);
+      ctx.arc(0, -1, 2.2, 0, Math.PI * 2);
+      ctx.fill();
+
+      ctx.fillStyle = "rgba(255, 122, 84, 0.85)";
+      ctx.beginPath();
+      ctx.moveTo(-2.4, 12);
+      ctx.lineTo(0, 16);
+      ctx.lineTo(2.4, 12);
+      ctx.closePath();
       ctx.fill();
       ctx.restore();
     }
@@ -1914,6 +1975,7 @@
       drawShipHull();
       drawOrbitLines();
       drawDeltaGlobeEmblem(270, 510, 0.95, 0.16);
+      drawMissionPatch();
       drawFieldEasterEggs();
       drawSpaceForceSymbol(104, 152, 1, 0.8);
       drawSpaceForceSymbol(438, 152, 1, 0.8);
