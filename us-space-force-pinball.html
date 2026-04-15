@@ -229,6 +229,73 @@
         order: 1;
       }
     }
+
+    .dev-attrib {
+      position: fixed;
+      right: 12px;
+      bottom: 10px;
+      z-index: 2;
+      color: rgba(220, 236, 255, 0.82);
+      font: 600 11px "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
+      user-select: none;
+      opacity: 0.56;
+      transition: opacity 0.2s ease;
+    }
+
+    .dev-attrib:hover,
+    .dev-attrib:focus-within {
+      opacity: 0.95;
+    }
+
+    .dev-attrib > summary {
+      list-style: none;
+      cursor: pointer;
+      padding: 6px 9px;
+      border-radius: 12px;
+      border: 1px solid rgba(112, 221, 255, 0.24);
+      background: rgba(7, 17, 43, 0.54);
+      backdrop-filter: blur(4px);
+      letter-spacing: 0.02em;
+    }
+
+    .dev-attrib > summary::-webkit-details-marker {
+      display: none;
+    }
+
+    .dev-attrib-panel {
+      margin-top: 6px;
+      padding: 8px;
+      border-radius: 12px;
+      border: 1px solid rgba(112, 221, 255, 0.24);
+      background: rgba(7, 17, 43, 0.8);
+      box-shadow: 0 0 14px rgba(112, 221, 255, 0.15);
+      min-width: 160px;
+    }
+
+    .dev-attrib-title {
+      margin: 0 0 6px;
+      font-size: 10px;
+      color: rgba(156, 183, 219, 0.96);
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+    }
+
+    .dev-attrib-links {
+      display: grid;
+      gap: 4px;
+    }
+
+    .dev-attrib-links a {
+      color: rgba(208, 235, 255, 0.94);
+      text-decoration: none;
+      border-bottom: 1px dotted rgba(112, 221, 255, 0.32);
+      width: fit-content;
+    }
+
+    .dev-attrib-links a:hover {
+      color: #70ddff;
+      border-bottom-color: rgba(112, 221, 255, 0.8);
+    }
   </style>
 </head>
 <body>
@@ -276,6 +343,17 @@
       <canvas id="game" width="700" height="1240" role="img" aria-label="Pinball board shaped like a spacecraft in flight"></canvas>
     </section>
   </main>
+
+  <details class="dev-attrib" aria-label="Developer attribution">
+    <summary>About dev</summary>
+    <div class="dev-attrib-panel">
+      <p class="dev-attrib-title">Developer Links</p>
+      <div class="dev-attrib-links">
+        <a href="https://github.com/" target="_blank" rel="noopener noreferrer">GitHub (placeholder)</a>
+        <a href="https://www.linkedin.com/" target="_blank" rel="noopener noreferrer">LinkedIn (placeholder)</a>
+      </div>
+    </div>
+  </details>
 
   <script>
     const canvas = document.getElementById("game");
