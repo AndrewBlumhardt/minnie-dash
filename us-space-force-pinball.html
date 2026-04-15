@@ -143,6 +143,39 @@
       color: var(--muted);
     }
 
+    .volume-controls {
+      margin-top: 14px;
+      padding: 10px;
+      border-radius: 12px;
+      background: rgba(12, 26, 62, 0.68);
+      border: 1px solid rgba(112, 221, 255, 0.2);
+      display: grid;
+      gap: 8px;
+    }
+
+    .volume-row {
+      display: grid;
+      grid-template-columns: auto 1fr auto;
+      align-items: center;
+      gap: 8px;
+      font-size: 0.82rem;
+    }
+
+    .volume-row button {
+      border: 1px solid rgba(112, 221, 255, 0.5);
+      background: rgba(9, 21, 52, 0.9);
+      color: var(--cyan);
+      border-radius: 8px;
+      padding: 4px 8px;
+      font-weight: 700;
+      cursor: pointer;
+    }
+
+    .volume-controls input[type="range"] {
+      width: 100%;
+      accent-color: var(--cyan);
+    }
+
     .controls b,
     .notes b {
       color: var(--ink);
@@ -220,6 +253,15 @@
         <div><b>Restart:</b> Enter after game over</div>
       </section>
 
+      <section class="volume-controls" aria-label="Sound controls">
+        <div class="volume-row">
+          <b>Sound</b>
+          <span id="volumeValue">70%</span>
+          <button id="muteButton" type="button">Mute</button>
+        </div>
+        <input id="volume" type="range" min="0" max="100" value="70" step="1" />
+      </section>
+
       <section class="notes">
         <div><b>Theme cues:</b> delta iconography, orbital rings, guardians, squadron craft, command hull.</div>
         <div><b>Objective:</b> keep the probe in flight, light orbit gates, stack multiplier hits, and avoid bonking any space janitors.</div>
@@ -242,6 +284,9 @@
     const ballsEl = document.getElementById("balls");
     const multiplierEl = document.getElementById("multiplier");
     const statusEl = document.getElementById("status");
+    const volumeEl = document.getElementById("volume");
+    const volumeValueEl = document.getElementById("volumeValue");
+    const muteButton = document.getElementById("muteButton");
 
     const board = {
       width: canvas.width,
@@ -310,7 +355,7 @@
       height: 154,
       minPower: 5.8,
       maxPower: 20.4,
-      maxCharge: 34
+      maxCharge: 24
     };
 
     const bumpers = [
@@ -339,20 +384,20 @@
 
     const flippers = {
       left: {
-        pivot: { x: 204, y: 852 },
-        length: 84,
-        width: 16,
-        base: -0.34,
+        pivot: { x: 198, y: 852 },
+        length: 60,
+        width: 14,
+        base: 0.34,
         lift: -1.12,
-        current: -0.34
+        current: 0.34
       },
       right: {
-        pivot: { x: 336, y: 852 },
-        length: 84,
-        width: 16,
-        base: Math.PI + 0.34,
+        pivot: { x: 342, y: 852 },
+        length: 60,
+        width: 14,
+        base: Math.PI - 0.34,
         lift: Math.PI + 1.12,
-        current: Math.PI + 0.34
+        current: Math.PI - 0.34
       }
     };
 
@@ -372,10 +417,18 @@
       { ax: 446, ay: 196, bx: 472, by: 252 },
       // Symmetric lower borders feeding flippers.
       { ax: 28, ay: 720, bx: 112, by: 848 },
-      { ax: 112, ay: 848, bx: 202, by: 802 },
-      { ax: 472, ay: 720, bx: 428, by: 802 },
-      { ax: 428, ay: 802, bx: 338, by: 848 }
+      { ax: 112, ay: 848, bx: 194, by: 812 },
+      { ax: 472, ay: 720, bx: 428, by: 848 },
+      { ax: 428, ay: 848, bx: 346, by: 812 }
     ];
+
+    const audio = {
+      ctx: null,
+      master: null,
+      enabled: false,
+      volume: 0.7,
+      muted: false
+    };
 
     const asteroids = [
       { x: 132, y: 448, r: 16, vx: 0.7, vy: 0.35, spin: 0, spinRate: 0.03, points: 180 },
@@ -422,6 +475,82 @@
       state.message = "Charge launch rail for deployment.";
     }
 
+    function ensureAudio() {
+      if (audio.enabled) {
+        if (audio.ctx && audio.ctx.state === "suspended") {
+          audio.ctx.resume();
+        }
+        applyAudioVolume();
+        return;
+      }
+
+      const AudioCtx = window.AudioContext || window.webkitAudioContext;
+      if (!AudioCtx) {
+        return;
+      }
+
+      audio.ctx = new AudioCtx();
+      audio.master = audio.ctx.createGain();
+      audio.master.connect(audio.ctx.destination);
+      applyAudioVolume();
+      audio.enabled = true;
+    }
+
+    function applyAudioVolume() {
+      if (!audio.master) {
+        return;
+      }
+      const out = audio.muted ? 0 : 0.34 * audio.volume;
+      audio.master.gain.value = out;
+    }
+
+    function setAudioUi() {
+      const pct = Math.round(audio.volume * 100);
+      volumeValueEl.textContent = `${pct}%`;
+      muteButton.textContent = audio.muted ? "Unmute" : "Mute";
+    }
+
+    function playTone(type, frequency, duration, gain = 0.06, slideTo = frequency) {
+      if (!audio.enabled || !audio.ctx || !audio.master) {
+        return;
+      }
+      const t0 = audio.ctx.currentTime;
+      const osc = audio.ctx.createOscillator();
+      const env = audio.ctx.createGain();
+      osc.type = type;
+      osc.frequency.setValueAtTime(frequency, t0);
+      osc.frequency.linearRampToValueAtTime(slideTo, t0 + duration);
+      env.gain.setValueAtTime(0.0001, t0);
+      env.gain.exponentialRampToValueAtTime(gain, t0 + 0.014);
+      env.gain.exponentialRampToValueAtTime(0.0001, t0 + duration);
+      osc.connect(env);
+      env.connect(audio.master);
+      osc.start(t0);
+      osc.stop(t0 + duration + 0.02);
+    }
+
+    function playNoise(duration = 0.06, gain = 0.03) {
+      if (!audio.enabled || !audio.ctx || !audio.master) {
+        return;
+      }
+      const frames = Math.floor(audio.ctx.sampleRate * duration);
+      const buffer = audio.ctx.createBuffer(1, frames, audio.ctx.sampleRate);
+      const data = buffer.getChannelData(0);
+      for (let i = 0; i < frames; i += 1) {
+        data[i] = (Math.random() * 2 - 1) * (1 - i / frames);
+      }
+      const src = audio.ctx.createBufferSource();
+      const env = audio.ctx.createGain();
+      const t0 = audio.ctx.currentTime;
+      src.buffer = buffer;
+      env.gain.setValueAtTime(gain, t0);
+      env.gain.exponentialRampToValueAtTime(0.0001, t0 + duration);
+      src.connect(env);
+      env.connect(audio.master);
+      src.start(t0);
+      src.stop(t0 + duration + 0.02);
+    }
+
     function addScore(points) {
       state.score += Math.floor(points * state.multiplier);
       state.comboTimer = 260;
@@ -432,6 +561,7 @@
 
     function loseBall() {
       state.balls -= 1;
+      playTone("sawtooth", 220, 0.2, 0.05, 92);
       if (state.balls <= 0) {
         state.running = false;
         state.canRestart = true;
@@ -591,6 +721,8 @@
           bumper.pulse = 1;
           spawnBurst(bumper.x, bumper.y, "112,221,255", 18);
           addScore(bumper.points);
+          playTone("square", 560, 0.09, 0.05, 760);
+          playTone("triangle", 340, 0.11, 0.035, 250);
           state.message = bumper.label + " target confirmed. " + quips[Math.floor(Math.random() * quips.length)];
         }
         bumper.pulse *= 0.9;
@@ -614,6 +746,7 @@
           beacon.pulse = 1;
           spawnBurst(beacon.x, beacon.y, "255,109,116", 16);
           addScore(beacon.points);
+          playTone("triangle", 430, 0.16, 0.04, 620);
           state.message = "Beacon uplink acquired. " + quips[Math.floor(Math.random() * quips.length)];
         }
         beacon.pulse *= 0.9;
@@ -637,6 +770,7 @@
           ball.vy -= 5.2 * sling.power;
           spawnBurst(ball.x, ball.y, "255,77,225", 10);
           addScore(110);
+          playTone("sawtooth", 250, 0.1, 0.03, 190);
           state.message = "Thruster sling engaged. " + quips[Math.floor(Math.random() * quips.length)];
         }
       }
@@ -660,6 +794,7 @@
           gate.lit = 1;
           spawnBurst(ball.x, ball.y, "255,212,103", 14);
           addScore(gate.points);
+          playTone("sine", 680, 0.08, 0.028, 760);
           state.message = gate.text + " gate cleared.";
         }
         gate.lit *= 0.92;
@@ -687,6 +822,8 @@
           asteroid.vy *= -1;
           spawnBurst(asteroid.x, asteroid.y, "187,161,120", 16);
           addScore(asteroid.points);
+          playNoise(0.05, 0.02);
+          playTone("triangle", 190, 0.07, 0.025, 130);
           state.message = "Asteroid bonk detected. Nobody tell accounting.";
         }
       }
@@ -737,7 +874,7 @@
 
       if (!ball.launched) {
         ball.x = launcher.holdX;
-        ball.y = launcher.holdY + state.launchPower * 1.8;
+        ball.y = launcher.holdY + state.launchPower * 1.0;
         ball.inShooterLane = true;
         ball.launchAssist = 0;
         if (state.charging) {
@@ -1220,10 +1357,6 @@
       ctx.fill();
       ctx.strokeStyle = "rgba(255, 255, 255, 0.72)";
       ctx.stroke();
-
-      ctx.fillStyle = "rgba(112, 221, 255, 0.88)";
-      ctx.font = "700 11px Segoe UI";
-      ctx.fillText("LAUNCH", plunger.x + 10, plunger.y - 8);
       ctx.restore();
     }
 
@@ -1362,6 +1495,7 @@
       }
       const normalized = state.launchPower / plunger.maxCharge;
       const impulse = plunger.minPower + (plunger.maxPower - plunger.minPower) * normalized;
+      ensureAudio();
       ball.inShooterLane = true;
       ball.x = launcher.holdX;
       ball.y = launcher.holdY;
@@ -1369,6 +1503,8 @@
       ball.vx = -0.6 - normalized * 0.2;
       ball.vy = -impulse;
       ball.launched = true;
+      playTone("sawtooth", 180, 0.13, 0.055, 380);
+      playNoise(0.05, 0.02);
       state.message = "Launch successful. Please wave to the astronauts on the way up.";
       state.charging = false;
     }
@@ -1387,12 +1523,17 @@
 
       if (event.code === "ArrowLeft") {
         state.leftPressed = true;
+        ensureAudio();
+        playTone("square", 320, 0.04, 0.02, 280);
       }
       if (event.code === "ArrowRight") {
         state.rightPressed = true;
+        ensureAudio();
+        playTone("square", 340, 0.04, 0.02, 300);
       }
       if (event.code === "Space") {
         if (state.introActive || (state.running && !ball.launched)) {
+          ensureAudio();
           state.charging = true;
           event.preventDefault();
         }
@@ -1415,6 +1556,7 @@
     });
 
     canvas.addEventListener("pointerdown", (event) => {
+      ensureAudio();
       if (state.introActive) {
         launchBall();
         return;
@@ -1431,8 +1573,21 @@
     });
 
     canvas.addEventListener("pointerup", () => {
+
+    volumeEl.addEventListener("input", (event) => {
+      audio.volume = Number(event.target.value) / 100;
+      applyAudioVolume();
+      setAudioUi();
+    });
+
+    muteButton.addEventListener("click", () => {
+      audio.muted = !audio.muted;
+      applyAudioVolume();
+      setAudioUi();
+    });
       launchBall();
       state.leftPressed = false;
+    setAudioUi();
       state.rightPressed = false;
       state.charging = false;
     });
