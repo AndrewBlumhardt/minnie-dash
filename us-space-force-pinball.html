@@ -340,7 +340,7 @@
     </aside>
 
     <section class="board-wrap">
-      <canvas id="game" width="700" height="1240" role="img" aria-label="Pinball board shaped like a spacecraft in flight"></canvas>
+      <canvas id="game" width="760" height="1400" role="img" aria-label="Pinball board shaped like a spacecraft in flight"></canvas>
     </section>
   </main>
 
@@ -391,6 +391,15 @@
       neonTick: 0,
       introActive: false,
       message: "Hold Space to charge the launch rail."
+    };
+
+    const boardArt = {
+      sourceCenterX: 270,
+      sourceCenterY: 438,
+      centerX: 270,
+      centerY: 438,
+      scaleX: 1,
+      scaleY: 1
     };
 
     const perf = {
@@ -489,7 +498,7 @@
 
     const flippers = {
       left: {
-        pivot: { x: 198, y: 852 },
+        pivot: { x: 198, y: 892 },
         length: 60,
         width: 14,
         base: 0.34,
@@ -497,7 +506,7 @@
         current: 0.34
       },
       right: {
-        pivot: { x: 342, y: 852 },
+        pivot: { x: 342, y: 892 },
         length: 60,
         width: 14,
         base: Math.PI - 0.34,
@@ -530,7 +539,7 @@
     const upperFlippers = [
       {
         side: "left",
-        pivot: { x: 56, y: 412 },
+        pivot: { x: 54, y: 438 },
         length: 54,
         width: 11,
         base: 0.22,
@@ -539,7 +548,7 @@
       },
       {
         side: "right",
-        pivot: { x: 484, y: 412 },
+        pivot: { x: 430, y: 438 },
         length: 54,
         width: 11,
         base: Math.PI - 0.22,
@@ -563,17 +572,20 @@
       { ax: 486, ay: 136, bx: 458, by: 196 },
       { ax: 458, ay: 196, bx: 486, by: 252 },
       // Symmetric lower borders feeding flippers.
-      { ax: 28, ay: 720, bx: 112, by: 848 },
-      { ax: 112, ay: 848, bx: 194, by: 812 },
+      { ax: 28, ay: 720, bx: 112, by: 888 },
+      { ax: 112, ay: 888, bx: 194, by: 852 },
       { ax: 472, ay: 720, bx: 486, by: 720 },
-      { ax: 472, ay: 720, bx: 428, by: 848 },
-      { ax: 428, ay: 848, bx: 346, by: 812 }
+      { ax: 472, ay: 720, bx: 428, by: 888 },
+      { ax: 428, ay: 888, bx: 346, by: 852 }
     ];
 
     const astronauts = [
-      { x: 78, y: 540, scale: 1, wave: 0.4, radius: 38, spin: 0, glow: 0, cooldown: 0 },
-      { x: 462, y: 548, scale: 0.92, wave: 2.1, radius: 38, spin: 0, glow: 0, cooldown: 0 },
-      { x: 270, y: 704, scale: 0.78, wave: 1.1, radius: 34, spin: 0, glow: 0, cooldown: 0 }
+      { x: 78, y: 540, scale: 1, wave: 0.4, radius: 38, spin: 0, glow: 0, cooldown: 0, suit: "standard" },
+      { x: 462, y: 548, scale: 0.92, wave: 2.1, radius: 38, spin: 0, glow: 0, cooldown: 0, suit: "blue" },
+      { x: 270, y: 704, scale: 0.78, wave: 1.1, radius: 34, spin: 0, glow: 0, cooldown: 0, suit: "pink" },
+      { x: 148, y: 462, scale: 0.7, wave: 0.9, radius: 32, spin: 0, glow: 0, cooldown: 0, suit: "gold" },
+      { x: 338, y: 600, scale: 0.66, wave: 2.8, radius: 28, spin: 0, glow: 0, cooldown: 0, suit: "blue" },
+      { x: 410, y: 770, scale: 0.62, wave: 1.6, radius: 26, spin: 0, glow: 0, cooldown: 0, suit: "standard" }
     ];
 
     const specialCore = {
@@ -638,8 +650,8 @@
     function applyBoardScale() {
       const sourceWidth = 560;
       const sourceHeight = 1000;
-      const sx = 1.16;
-      const sy = 1.16;
+      const sx = 1.24;
+      const sy = 1.28;
       const s = (sx + sy) * 0.5;
       const coreLeft = 28;
       const coreRight = 486;
@@ -737,6 +749,11 @@
 
       launchFx.plumeX = tx(launchFx.plumeX);
       launchFx.plumeY = ty(launchFx.plumeY);
+
+      boardArt.centerX = tx(boardArt.sourceCenterX);
+      boardArt.centerY = ty(boardArt.sourceCenterY);
+      boardArt.scaleX = sx;
+      boardArt.scaleY = sy;
 
       for (const gate of gates) {
         gate.x = tx(gate.x);
@@ -1496,6 +1513,13 @@
       const wave = astronaut.wave;
       const spin = astronaut.spin;
       const glow = astronaut.glow;
+      const suit = astronaut.suit || "standard";
+      const stripeBySuit = {
+        standard: "rgba(255, 77, 225, 0.9)",
+        blue: "rgba(112, 221, 255, 0.92)",
+        gold: "rgba(255, 212, 103, 0.9)",
+        pink: "rgba(255, 138, 228, 0.92)"
+      };
       ctx.save();
       ctx.translate(x, y + Math.sin(state.neonTick + wave) * 5);
       ctx.rotate(spin);
@@ -1519,7 +1543,7 @@
       ctx.arc(0, -18, 7, 0, Math.PI * 2);
       ctx.fill();
 
-      ctx.fillStyle = "rgba(255, 77, 225, 0.9)";
+      ctx.fillStyle = stripeBySuit[suit] || stripeBySuit.standard;
       ctx.fillRect(-8, 1, 16, 5);
       ctx.restore();
     }
@@ -1979,7 +2003,7 @@
       }
 
       const velocityAngle = Math.atan2(ball.vy, ball.vx) + Math.PI * 0.5;
-      const angle = ball.inShooterLane ? -Math.PI * 0.5 : velocityAngle;
+      const angle = (ball.inShooterLane || ball.launchAssist > 0) ? -Math.PI * 0.5 : velocityAngle;
       const scale = ball.r / 10;
 
       ctx.save();
@@ -1995,13 +2019,17 @@
       hull.addColorStop(1, "#6caee2");
       ctx.fillStyle = hull;
       ctx.beginPath();
-      ctx.moveTo(0, -13);
-      ctx.lineTo(7, -2);
+      ctx.moveTo(0, -14);
+      ctx.lineTo(4, -8);
+      ctx.lineTo(8, -1);
       ctx.lineTo(10, 7);
       ctx.lineTo(4, 12);
+      ctx.lineTo(1.5, 8.5);
+      ctx.lineTo(-1.5, 8.5);
       ctx.lineTo(-4, 12);
       ctx.lineTo(-10, 7);
-      ctx.lineTo(-7, -2);
+      ctx.lineTo(-8, -1);
+      ctx.lineTo(-4, -8);
       ctx.closePath();
       ctx.fill();
 
@@ -2012,7 +2040,7 @@
 
       ctx.fillStyle = "rgba(255, 212, 103, 0.88)";
       ctx.beginPath();
-      ctx.arc(0, -1, 2.2, 0, Math.PI * 2);
+      ctx.arc(0, -4, 2, 0, Math.PI * 2);
       ctx.fill();
 
       ctx.fillStyle = "rgba(255, 122, 84, 0.85)";
@@ -2047,26 +2075,32 @@
     }
 
     function drawBoardArt() {
+      ctx.save();
+      ctx.translate(boardArt.centerX, boardArt.centerY);
+      ctx.scale(boardArt.scaleX, boardArt.scaleY);
+      ctx.translate(-boardArt.sourceCenterX, -boardArt.sourceCenterY);
       drawNeonGrid();
       drawStarField();
       drawLargeTypography();
       drawShipHull();
       drawOrbitLines();
       drawDeltaGlobeEmblem(270, 510, 0.95, 0.16);
-      drawMissionPatch();
-      drawFieldEasterEggs();
       drawSpaceForceSymbol(104, 152, 1, 0.8);
       drawSpaceForceSymbol(438, 152, 1, 0.8);
       drawSpaceForceSymbol(270, 612, 1.2, 0.38);
-      drawLaunchRailFx();
       drawCarrier(270, 238, 1, 14);
-      for (const astronaut of astronauts) {
-        drawAstronaut(astronaut);
-      }
       drawFighter(132, 278, 0.95, -0.26, "rgba(112, 221, 255, 0.72)");
       drawFighter(408, 278, 0.95, 0.26, "rgba(112, 221, 255, 0.72)");
       drawFighter(270, 124, 0.78, 0, "rgba(255, 212, 103, 0.76)");
-      drawSpaceForceSymbol(270, 455, 1.05, 0.45);
+      ctx.restore();
+
+      drawMissionPatch();
+      drawFieldEasterEggs();
+      drawLaunchRailFx();
+      for (const astronaut of astronauts) {
+        drawAstronaut(astronaut);
+      }
+      drawSpaceForceSymbol(specialCore.x, specialCore.y + 20, 1.05, 0.45);
     }
 
     function render() {
