@@ -3,6 +3,307 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Pinball</title>
+  <style>
+    body {
+      margin: 0;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      min-height: 100vh;
+      background: #0a0a1a;
+      font-family: Arial, sans-serif;
+      color: #70ddff;
+    }
+    
+    .container {
+      display: flex;
+      gap: 20px;
+      padding: 20px;
+    }
+    
+    canvas {
+      border: 2px solid #70ddff;
+      display: block;
+      background: #050510;
+    }
+    
+    .panel {
+      width: 200px;
+      padding: 20px;
+      background: rgba(5, 5, 16, 0.8);
+      border: 1px solid #70ddff;
+    }
+    
+    .stat { margin: 10px 0; font-size: 14px; }
+    .stat-value { font-weight: bold; color: #ffd467; }
+    
+    .controls { margin-top: 20px; font-size: 12px; line-height: 1.8; }
+    
+    @media (max-width: 700px) {
+      .container { flex-direction: column; align-items: center; }
+      .panel { width: auto; }
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <canvas id="canvas" width="200" height="400"></canvas>
+    <div class="panel">
+      <div class="stat">Score: <span class="stat-value" id="score">0</span></div>
+      <div class="stat">Best: <span class="stat-value" id="best">0</span></div>
+      <div class="stat">Balls: <span class="stat-value" id="balls">3</span></div>
+      
+      <div class="controls">
+        <b>Launch:</b> Space key<br/>
+        <b>Left:</b> Z or Left<br/>
+        <b>Right:</b> X or Right<br/>
+        <b>Restart:</b> Enter
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const canvas = document.getElementById("canvas");
+    const ctx = canvas.getContext("2d");
+
+    const game = {
+      score: 0,
+      best: parseInt(localStorage.getItem("pinballBest") || "0"),
+      balls: 3,
+      running: true,
+      gameOver: false,
+      charging: false,
+      launched: false,
+      power: 0
+    };
+
+    const ball = {
+      x: 20,
+      y: 380,
+      vx: 0,
+      vy: 0,
+      r: 3
+    };
+
+    const paddles = [
+      { x: 60, y: 380, width: 30, hit: false, hitTimer: 0 },  // Left
+      { x: 130, y: 380, width: 30, hit: false, hitTimer: 0 }  // Right
+    ];
+
+    const bumpers = [
+      { x: 50, y: 80, r: 8 },
+      { x: 100, y: 70, r: 8 },
+      { x: 150, y: 80, r: 8 },
+      { x: 30, y: 150, r: 7 },
+      { x: 100, y: 160, r: 7 },
+      { x: 170, y: 150, r: 7 },
+      { x: 70, y: 240, r: 7 },
+      { x: 130, y: 250, r: 7 }
+    ];
+
+    let lastScore = 0;
+
+    document.getElementById("best").textContent = String(game.best);
+
+    function launch() {
+      if (game.launched || !game.running) return;
+      ball.vx = 0;
+      ball.vy = -game.power * 0.6;
+      game.launched = true;
+      game.charging = false;
+      game.power = 0;
+    }
+
+    function resetBall() {
+      ball.x = 20;
+      ball.y = 380;
+      ball.vx = 0;
+      ball.vy = 0;
+      game.launched = false;
+      game.power = 0;
+    }
+
+    function update() {
+      if (!game.running) return;
+
+      if (!game.launched) {
+        if (game.charging && game.power < 20) {
+          game.power += 0.3;
+        }
+        ball.x = 20;
+        ball.y = 380;
+        return;
+      }
+
+      // Physics
+      ball.vy += 0.25;
+      ball.vx *= 0.996;
+      ball.vy *= 0.996;
+      ball.x += ball.vx;
+      ball.y += ball.vy;
+
+      // Walls
+      if (ball.x - ball.r < 10) {
+        ball.x = 10 + ball.r;
+        ball.vx = Math.abs(ball.vx) * 0.85;
+      }
+      if (ball.x + ball.r > 190) {
+        ball.x = 190 - ball.r;
+        ball.vx = -Math.abs(ball.vx) * 0.85;
+      }
+      if (ball.y - ball.r < 10) {
+        ball.y = 10 + ball.r;
+        ball.vy = Math.abs(ball.vy) * 0.85;
+      }
+
+      // Bumpers
+      for (const bumper of bumpers) {
+        const dx = ball.x - bumper.x;
+        const dy = ball.y - bumper.y;
+        const dist = Math.sqrt(dx * dx + dy * dy);
+        if (dist < ball.r + bumper.r) {
+          const nx = dx / dist;
+          const ny = dy / dist;
+          ball.x = bumper.x + nx * (ball.r + bumper.r);
+          ball.y = bumper.y + ny * (ball.r + bumper.r);
+          ball.vx = nx * 6;
+          ball.vy = ny * 6 - 1;
+          game.score += 50;
+        }
+      }
+
+      // Paddles (simple zones)
+      // Left paddle: x 45-75, y 370-390
+      if (ball.y > 370 && ball.y < 390) {
+        if (ball.x > 45 && ball.x < 75 && ball.vy > 0) {
+          ball.vy = -10;
+          ball.vx = -3;
+          ball.y = 369;
+          paddles[0].hitTimer = 5;
+        }
+        // Right paddle: x 125-155
+        if (ball.x > 125 && ball.x < 155 && ball.vy > 0) {
+          ball.vy = -10;
+          ball.vx = 3;
+          ball.y = 369;
+          paddles[1].hitTimer = 5;
+        }
+      }
+
+      // Drain (center x 85-115)
+      if (ball.y > 395) {
+        game.balls--;
+        if (game.balls <= 0) {
+          game.running = false;
+          game.gameOver = true;
+          if (game.score > game.best) {
+            game.best = game.score;
+            localStorage.setItem("pinballBest", String(game.best));
+          }
+        } else {
+          resetBall();
+        }
+      }
+
+      // Update hit timers
+      paddles[0].hitTimer = Math.max(0, paddles[0].hitTimer - 1);
+      paddles[1].hitTimer = Math.max(0, paddles[1].hitTimer - 1);
+    }
+
+    function render() {
+      ctx.fillStyle = "#050510";
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+      // Bumpers
+      ctx.fillStyle = "#ffd467";
+      for (const bump of bumpers) {
+        ctx.beginPath();
+        ctx.arc(bump.x, bump.y, bump.r, 0, Math.PI * 2);
+        ctx.fill();
+      }
+
+      // Paddles
+      for (let i = 0; i < 2; i++) {
+        const p = paddles[i];
+        ctx.fillStyle = p.hitTimer > 0 ? "#ff4de1" : "#70ddff";
+        ctx.fillRect(p.x - p.width / 2, p.y - 3, p.width, 6);
+      }
+
+      // Ball
+      ctx.fillStyle = "#ffffff";
+      ctx.beginPath();
+      ctx.arc(ball.x, ball.y, ball.r, 0, Math.PI * 2);
+      ctx.fill();
+
+      // Plunger (when not launched)
+      if (!game.launched) {
+        ctx.fillStyle = "#ff6d74";
+        ctx.fillRect(10, 380 - game.power, 8, 10 + game.power);
+      }
+
+      // Drain indicator
+      ctx.strokeStyle = "rgba(112, 221, 255, 0.3)";
+      ctx.lineWidth = 1;
+      ctx.strokeRect(85, 390, 30, 15);
+
+      // Title
+      ctx.fillStyle = "#70ddff";
+      ctx.font = "bold 12px Arial";
+      ctx.fillText("PINBALL", 75, 25);
+    }
+
+    function gameLoop() {
+      update();
+      render();
+      document.getElementById("score").textContent = String(game.score);
+      document.getElementById("best").textContent = String(game.best);
+      document.getElementById("balls").textContent = String(game.balls);
+      requestAnimationFrame(gameLoop);
+    }
+
+    // Input
+    document.addEventListener("keydown", (e) => {
+      if (e.code === "Space" && !game.launched && game.running) {
+        e.preventDefault();
+        game.charging = true;
+      }
+      if ((e.code === "KeyZ" || e.code === "ArrowLeft") && game.running) {
+        paddles[0].hit = true;
+      }
+      if ((e.code === "KeyX" || e.code === "ArrowRight") && game.running) {
+        paddles[1].hit = true;
+      }
+      if (e.code === "Enter" && game.gameOver) {
+        game.running = true;
+        game.gameOver = false;
+        game.score = 0;
+        game.balls = 3;
+        resetBall();
+      }
+    });
+
+    document.addEventListener("keyup", (e) => {
+      if (e.code === "Space") {
+        launch();
+      }
+      if (e.code === "KeyZ" || e.code === "ArrowLeft") {
+        paddles[0].hit = false;
+      }
+      if (e.code === "KeyX" || e.code === "ArrowRight") {
+        paddles[1].hit = false;
+      }
+    });
+
+    gameLoop();
+  </script>
+</body>
+</html>
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Orbital Guardian Pinball</title>
   <style>
     :root {
