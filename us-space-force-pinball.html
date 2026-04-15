@@ -3,892 +3,15 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Pinball</title>
-  <style>
-    body {
-      margin: 0;
-      display: flex;
-      justify-content: center;
-      align-items: center;
-      min-height: 100vh;
-      background: #0a0a1a;
-      font-family: Arial, sans-serif;
-      color: #70ddff;
-    }
-    
-    .container {
-      display: flex;
-      gap: 20px;
-      padding: 20px;
-    }
-    
-    canvas {
-      border: 2px solid #70ddff;
-      display: block;
-      background: #050510;
-    }
-    
-    .panel {
-      width: 200px;
-      padding: 20px;
-      background: rgba(5, 5, 16, 0.8);
-      border: 1px solid #70ddff;
-    }
-    
-    .stat { margin: 10px 0; font-size: 14px; }
-    .stat-value { font-weight: bold; color: #ffd467; }
-    
-    .controls { margin-top: 20px; font-size: 12px; line-height: 1.8; }
-    
-    @media (max-width: 700px) {
-      .container { flex-direction: column; align-items: center; }
-      .panel { width: auto; }
-    }
-  </style>
-</head>
-<body>
-  <div class="container">
-    <canvas id="canvas" width="200" height="400"></canvas>
-    <div class="panel">
-      <div class="stat">Score: <span class="stat-value" id="score">0</span></div>
-      <div class="stat">Best: <span class="stat-value" id="best">0</span></div>
-      <div class="stat">Balls: <span class="stat-value" id="balls">3</span></div>
-      
-      <div class="controls">
-        <b>Launch:</b> Space key<br/>
-        <b>Left:</b> Z or Left<br/>
-        <b>Right:</b> X or Right<br/>
-        <b>Restart:</b> Enter
-      </div>
-    </div>
-  </div>
-
-  <script>
-    const canvas = document.getElementById("canvas");
-    const ctx = canvas.getContext("2d");
-
-    const game = {
-      score: 0,
-      best: parseInt(localStorage.getItem("pinballBest") || "0"),
-      balls: 3,
-      running: true,
-      gameOver: false,
-      charging: false,
-      launched: false,
-      power: 0
-    };
-
-    const ball = {
-      x: 20,
-      y: 380,
-      vx: 0,
-      vy: 0,
-      r: 3
-    };
-
-    const paddles = [
-      { x: 60, y: 380, width: 30, hit: false, hitTimer: 0 },  // Left
-      { x: 130, y: 380, width: 30, hit: false, hitTimer: 0 }  // Right
-    ];
-
-    const bumpers = [
-      { x: 50, y: 80, r: 8 },
-      { x: 100, y: 70, r: 8 },
-      { x: 150, y: 80, r: 8 },
-      { x: 30, y: 150, r: 7 },
-      { x: 100, y: 160, r: 7 },
-      { x: 170, y: 150, r: 7 },
-      { x: 70, y: 240, r: 7 },
-      { x: 130, y: 250, r: 7 }
-    ];
-
-    let lastScore = 0;
-
-    document.getElementById("best").textContent = String(game.best);
-
-    function launch() {
-      if (game.launched || !game.running) return;
-      ball.vx = 0;
-      ball.vy = -game.power * 0.6;
-      game.launched = true;
-      game.charging = false;
-      game.power = 0;
-    }
-
-    function resetBall() {
-      ball.x = 20;
-      ball.y = 380;
-      ball.vx = 0;
-      ball.vy = 0;
-      game.launched = false;
-      game.power = 0;
-    }
-
-    function update() {
-      if (!game.running) return;
-
-      if (!game.launched) {
-        if (game.charging && game.power < 20) {
-          game.power += 0.3;
-        }
-        ball.x = 20;
-        ball.y = 380;
-        return;
-      }
-
-      // Physics
-      ball.vy += 0.25;
-      ball.vx *= 0.996;
-      ball.vy *= 0.996;
-      ball.x += ball.vx;
-      ball.y += ball.vy;
-
-      // Walls
-      if (ball.x - ball.r < 10) {
-        ball.x = 10 + ball.r;
-        ball.vx = Math.abs(ball.vx) * 0.85;
-      }
-      if (ball.x + ball.r > 190) {
-        ball.x = 190 - ball.r;
-        ball.vx = -Math.abs(ball.vx) * 0.85;
-      }
-      if (ball.y - ball.r < 10) {
-        ball.y = 10 + ball.r;
-        ball.vy = Math.abs(ball.vy) * 0.85;
-      }
-
-      // Bumpers
-      for (const bumper of bumpers) {
-        const dx = ball.x - bumper.x;
-        const dy = ball.y - bumper.y;
-        const dist = Math.sqrt(dx * dx + dy * dy);
-        if (dist < ball.r + bumper.r) {
-          const nx = dx / dist;
-          const ny = dy / dist;
-          ball.x = bumper.x + nx * (ball.r + bumper.r);
-          ball.y = bumper.y + ny * (ball.r + bumper.r);
-          ball.vx = nx * 6;
-          ball.vy = ny * 6 - 1;
-          game.score += 50;
-        }
-      }
-
-      // Paddles (simple zones)
-      // Left paddle: x 45-75, y 370-390
-      if (ball.y > 370 && ball.y < 390) {
-        if (ball.x > 45 && ball.x < 75 && ball.vy > 0) {
-          ball.vy = -10;
-          ball.vx = -3;
-          ball.y = 369;
-          paddles[0].hitTimer = 5;
-        }
-        // Right paddle: x 125-155
-        if (ball.x > 125 && ball.x < 155 && ball.vy > 0) {
-          ball.vy = -10;
-          ball.vx = 3;
-          ball.y = 369;
-          paddles[1].hitTimer = 5;
-        }
-      }
-
-      // Drain (center x 85-115)
-      if (ball.y > 395) {
-        game.balls--;
-        if (game.balls <= 0) {
-          game.running = false;
-          game.gameOver = true;
-          if (game.score > game.best) {
-            game.best = game.score;
-            localStorage.setItem("pinballBest", String(game.best));
-          }
-        } else {
-          resetBall();
-        }
-      }
-
-      // Update hit timers
-      paddles[0].hitTimer = Math.max(0, paddles[0].hitTimer - 1);
-      paddles[1].hitTimer = Math.max(0, paddles[1].hitTimer - 1);
-    }
-
-    function render() {
-      ctx.fillStyle = "#050510";
-      ctx.fillRect(0, 0, canvas.width, canvas.height);
-
-      // Bumpers
-      ctx.fillStyle = "#ffd467";
-      for (const bump of bumpers) {
-        ctx.beginPath();
-        ctx.arc(bump.x, bump.y, bump.r, 0, Math.PI * 2);
-        ctx.fill();
-      }
-
-      // Paddles
-      for (let i = 0; i < 2; i++) {
-        const p = paddles[i];
-        ctx.fillStyle = p.hitTimer > 0 ? "#ff4de1" : "#70ddff";
-        ctx.fillRect(p.x - p.width / 2, p.y - 3, p.width, 6);
-      }
-
-      // Ball
-      ctx.fillStyle = "#ffffff";
-      ctx.beginPath();
-      ctx.arc(ball.x, ball.y, ball.r, 0, Math.PI * 2);
-      ctx.fill();
-
-      // Plunger (when not launched)
-      if (!game.launched) {
-        ctx.fillStyle = "#ff6d74";
-        ctx.fillRect(10, 380 - game.power, 8, 10 + game.power);
-      }
-
-      // Drain indicator
-      ctx.strokeStyle = "rgba(112, 221, 255, 0.3)";
-      ctx.lineWidth = 1;
-      ctx.strokeRect(85, 390, 30, 15);
-
-      // Title
-      ctx.fillStyle = "#70ddff";
-      ctx.font = "bold 12px Arial";
-      ctx.fillText("PINBALL", 75, 25);
-    }
-
-    function gameLoop() {
-      update();
-      render();
-      document.getElementById("score").textContent = String(game.score);
-      document.getElementById("best").textContent = String(game.best);
-      document.getElementById("balls").textContent = String(game.balls);
-      requestAnimationFrame(gameLoop);
-    }
-
-    // Input
-    document.addEventListener("keydown", (e) => {
-      if (e.code === "Space" && !game.launched && game.running) {
-        e.preventDefault();
-        game.charging = true;
-      }
-      if ((e.code === "KeyZ" || e.code === "ArrowLeft") && game.running) {
-        paddles[0].hit = true;
-      }
-      if ((e.code === "KeyX" || e.code === "ArrowRight") && game.running) {
-        paddles[1].hit = true;
-      }
-      if (e.code === "Enter" && game.gameOver) {
-        game.running = true;
-        game.gameOver = false;
-        game.score = 0;
-        game.balls = 3;
-        resetBall();
-      }
-    });
-
-    document.addEventListener("keyup", (e) => {
-      if (e.code === "Space") {
-        launch();
-      }
-      if (e.code === "KeyZ" || e.code === "ArrowLeft") {
-        paddles[0].hit = false;
-      }
-      if (e.code === "KeyX" || e.code === "ArrowRight") {
-        paddles[1].hit = false;
-      }
-    });
-
-    gameLoop();
-  </script>
-</body>
-</html>
-<!doctype html>
-<html lang="en">
-<head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Orbital Guardian Pinball</title>
   <style>
     :root {
-      --bg-1: #040814;
-      --bg-2: #071a3f;
-      --panel: rgba(7, 17, 43, 0.88);
-      --line: rgba(129, 212, 255, 0.48);
-      --cyan: #70ddff;
-      --pink: #ff4de1;
-      --gold: #ffd467;
-      --ink: #eaf5ff;
-    }
-
-    * { box-sizing: border-box; }
-
-    body {
-      margin: 0;
-      min-height: 100vh;
-      display: grid;
-      place-items: center;
-      font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
-      color: var(--ink);
-      background: linear-gradient(160deg, var(--bg-1), #07112a 42%, var(--bg-2));
-      overflow-x: hidden;
-    }
-
-    .layout {
-      width: min(96vw, 1020px);
-      display: grid;
-      grid-template-columns: minmax(240px, 290px) minmax(320px, 1fr);
-      gap: 18px;
-      padding: 16px;
-      z-index: 1;
-    }
-
-    .panel, .board-wrap {
-      background: var(--panel);
-      border: 1px solid var(--line);
-      box-shadow: 0 0 22px rgba(112, 221, 255, 0.28);
-      backdrop-filter: blur(8px);
-    }
-
-    .panel { border-radius: 18px; padding: 18px; }
-    .board-wrap { border-radius: 16px; overflow: hidden; }
-
-    canvas {
-      width: 100%;
-      height: auto;
-      display: block;
-      background: linear-gradient(180deg, #0a163c 0%, #08112d 58%, #060b1d 100%);
-    }
-
-    .title { margin: 0 0 16px 0; font-size: 18px; }
-    .stats { list-style: none; margin: 0 0 16px 0; padding: 0; }
-    .stats li { display: flex; justify-content: space-between; margin-bottom: 8px; }
-    .stats strong { font-variant-numeric: tabular-nums; }
-
-    .controls, .notes {
-      margin: 16px 0;
-      padding: 12px;
-      background: rgba(112, 221, 255, 0.08);
-      border-radius: 8px;
-      font-size: 13px;
-      line-height: 1.6;
-    }
-
-    .volume-controls {
-      margin: 16px 0;
-      padding: 12px;
-      background: rgba(255, 77, 225, 0.08);
-      border-radius: 8px;
-    }
-
-    .volume-row { display: flex; gap: 8px; align-items: center; margin-bottom: 8px; }
-    .volume-row b { flex: 0 0 auto; }
-    .volume-row span { flex: 1; text-align: right; font-variant-numeric: tabular-nums; }
-    .volume-row button { flex: 0 0 auto; padding: 4px 12px; font-size: 12px; background: var(--cyan); color: var(--bg-1); border: none; border-radius: 4px; cursor: pointer; }
-
-    input[type="range"] { width: 100%; }
-
-    .status { font-size: 12px; color: var(--muted); margin-top: 12px; }
-
-    @media (max-width: 920px) {
-      .layout { grid-template-columns: 1fr; }
-      .panel { order: 2; }
-      .board-wrap { order: 1; }
-    }
-  </style>
-</head>
-<body>
-  <main class="layout">
-    <aside class="panel" aria-live="polite">
-      <h1 class="title">Orbital Guardian<br/><span style="font-size: 12px; font-weight: normal; color: var(--muted); --muted: #9cb7db;">Classic pinball</span></h1>
-
-      <ul class="stats">
-        <li><span>Score</span><strong id="score">0</strong></li>
-        <li><span>Best</span><strong id="best">0</strong></li>
-        <li><span>Balls</span><strong id="balls">3</strong></li>
-      </ul>
-
-      <section class="controls">
-        <div><b>Launch:</b> Space (hold and release)</div>
-        <div><b>Left Paddle:</b> Left Arrow or Z</div>
-        <div><b>Right Paddle:</b> Right Arrow or X</div>
-        <div><b>Restart:</b> Enter</div>
-      </section>
-
-      <section class="volume-controls">
-        <div class="volume-row">
-          <b>Volume</b>
-          <span id="volumeValue">70%</span>
-          <button id="muteButton">Mute</button>
-        </div>
-        <input id="volume" type="range" min="0" max="100" value="70" step="1" />
-      </section>
-
-      <section class="notes">
-        <div><b>How to play:</b> Launch the ball up the ramp into the playfield. Hit bumpers for points. Use paddles to keep the ball in play. Ball falls through center drain = game over.</div>
-      </section>
-
-      <div class="status" id="status">Press Space to launch.</div>
-    </aside>
-
-    <section class="board-wrap">
-      <canvas id="game" width="280" height="420" role="img" aria-label="Pinball playfield"></canvas>
-    </section>
-  </main>
-
-  <script>
-    const canvas = document.getElementById("game");
-    const ctx = canvas.getContext("2d");
-
-    const scoreEl = document.getElementById("score");
-    const bestEl = document.getElementById("best");
-    const ballsEl = document.getElementById("balls");
-    const statusEl = document.getElementById("status");
-    const volumeEl = document.getElementById("volume");
-    const volumeValueEl = document.getElementById("volumeValue");
-    const muteButton = document.getElementById("muteButton");
-
-    // Physics constants
-    const physics = {
-      gravity: 0.25,
-      friction: 0.995,
-      bounce: 0.85
-    };
-
-    // Game state
-    const game = {
-      running: true,
-      score: 0,
-      best: parseInt(localStorage.getItem("pinballBest") || "0"),
-      balls: 3,
-      launchPower: 0,
-      charging: false,
-      gameOver: false
-    };
-
-    // Ball
-    const ball = {
-      x: 30,
-      y: 380,
-      vx: 0,
-      vy: 0,
-      radius: 4
-    };
-
-    // Plunger (spring launcher)
-    const plunger = {
-      x: 30,
-      y: 380,
-      power: 0,
-      maxPower: 20,
-      launched: false
-    };
-
-    // Paddles (flippers)
-    const paddles = {
-      left: {
-        x: 90,
-        y: 385,
-        length: 40,
-        width: 8,
-        angle: -0.5,
-        targetAngle: -0.5,
-        cooldown: 0
-      },
-      right: {
-        x: 190,
-        y: 385,
-        length: 40,
-        width: 8,
-        angle: 0.5,
-        targetAngle: 0.5,
-        cooldown: 0
-      }
-    };
-
-    // Bumpers (interactive obstacles)
-    const bumpers = [
-      { x: 70, y: 100, r: 12, points: 100, active: false, cooldown: 0 },
-      { x: 140, y: 80, r: 12, points: 150, active: false, cooldown: 0 },
-      { x: 210, y: 100, r: 12, points: 100, active: false, cooldown: 0 },
-      { x: 70, y: 180, r: 10, points: 75, active: false, cooldown: 0 },
-      { x: 140, y: 200, r: 10, points: 75, active: false, cooldown: 0 },
-      { x: 210, y: 180, r: 10, points: 75, active: false, cooldown: 0 }
-    ];
-
-    // Walls (boundaries and ramps)
-    const walls = [
-      // Outer bounds
-      { x1: 10, y1: 10, x2: 10, y2: 380 },     // Left wall
-      { x1: 10, y1: 10, x2: 270, y2: 10 },     // Top wall
-      { x1: 270, y1: 10, x2: 270, y2: 380 },   // Right wall
-
-      // Launch ramp (diagonal from bottom-left going up-right)
-      { x1: 30, y1: 390, x2: 80, y2: 300 },    // Ramp curve start
-
-      // Bumper field walls (guide ball around bumpers)
-      { x1: 50, y1: 120, x2: 130, y2: 120 },   // Upper left barrier
-      { x1: 150, y1: 120, x2: 230, y2: 120 }   // Upper right barrier
-    ];
-
-    // Audio
-    const audio = {
-      ctx: null,
-      master: null,
-      enabled: false,
-      volume: 0.7,
-      muted: false
-    };
-
-    function ensureAudio() {
-      if (audio.enabled) return;
-      const AudioCtx = window.AudioContext || window.webkitAudioContext;
-      if (!AudioCtx) return;
-      audio.ctx = new AudioCtx();
-      audio.master = audio.ctx.createGain();
-      audio.master.connect(audio.ctx.destination);
-      updateAudioVolume();
-      audio.enabled = true;
-    }
-
-    function updateAudioVolume() {
-      if (!audio.master) return;
-      audio.master.gain.value = audio.muted ? 0 : audio.volume * 0.3;
-    }
-
-    function playSound(freq, duration, type = "sine") {
-      if (!audio.enabled || !audio.ctx) return;
-      const osc = audio.ctx.createOscillator();
-      const env = audio.ctx.createGain();
-      osc.type = type;
-      osc.frequency.value = freq;
-      env.gain.setValueAtTime(0.05, audio.ctx.currentTime);
-      env.gain.exponentialRampToValueAtTime(0.001, audio.ctx.currentTime + duration);
-      osc.connect(env);
-      env.connect(audio.master);
-      osc.start(audio.ctx.currentTime);
-      osc.stop(audio.ctx.currentTime + duration);
-    }
-
-    function resetBall() {
-      ball.x = plunger.x;
-      ball.y = plunger.y;
-      ball.vx = 0;
-      ball.vy = 0;
-      plunger.power = 0;
-      plunger.launched = false;
-      game.charging = false;
-      statusEl.textContent = "Press Space to launch.";
-    }
-
-    function launchBall() {
-      if (plunger.launched || !game.running) return;
-      ensureAudio();
-      const impulse = plunger.power * 0.8;
-      ball.vx = 1 + impulse * 0.3;
-      ball.vy = -impulse;
-      plunger.launched = true;
-      game.charging = false;
-      playSound(200, 0.1, "square");
-      statusEl.textContent = "Ball launched!";
-    }
-
-    function checkBumperCollision(bumper) {
-      const dx = ball.x - bumper.x;
-      const dy = ball.y - bumper.y;
-      const dist = Math.hypot(dx, dy);
-      const minDist = ball.radius + bumper.r;
-
-      if (dist < minDist && bumper.cooldown <= 0) {
-        const nx = dx / dist;
-        const ny = dy / dist;
-        ball.x = bumper.x + nx * minDist;
-        ball.y = bumper.y + ny * minDist;
-        const speed = Math.max(3, Math.hypot(ball.vx, ball.vy));
-        ball.vx = nx * speed;
-        ball.vy = ny * speed;
-        game.score += bumper.points;
-        bumper.cooldown = 10;
-        playSound(400 + Math.random() * 200, 0.08, "triangle");
-        statusEl.textContent = `+${bumper.points} points!`;
-      }
-
-      if (bumper.cooldown > 0) {
-        bumper.cooldown--;
-      }
-    }
-
-    function checkWallCollision(wall) {
-      const dx = wall.x2 - wall.x1;
-      const dy = wall.y2 - wall.y1;
-      const fx = ball.x - wall.x1;
-      const fy = ball.y - wall.y1;
-      const lenSq = dx * dx + dy * dy;
-      let t = (fx * dx + fy * dy) / lenSq;
-      t = Math.max(0, Math.min(1, t));
-      const px = wall.x1 + t * dx;
-      const py = wall.y1 + t * dy;
-      const dist = Math.hypot(ball.x - px, ball.y - py);
-
-      if (dist < ball.radius) {
-        const nx = (ball.x - px) / (dist || 1);
-        const ny = (ball.y - py) / (dist || 1);
-        ball.x = px + nx * ball.radius;
-        ball.y = py + ny * ball.radius;
-        const dot = ball.vx * nx + ball.vy * ny;
-        if (dot < 0) {
-          ball.vx -= (1 + physics.bounce) * dot * nx;
-          ball.vy -= (1 + physics.bounce) * dot * ny;
-        }
-      }
-    }
-
-    function checkPaddleCollision(paddle) {
-      if (paddle.cooldown > 0) {
-        paddle.cooldown--;
-        return;
-      }
-
-      const px = paddle.x + Math.cos(paddle.angle) * paddle.length * 0.5;
-      const py = paddle.y + Math.sin(paddle.angle) * paddle.length * 0.5;
-      const dx = Math.cos(paddle.angle) * paddle.length;
-      const dy = Math.sin(paddle.angle) * paddle.length;
-      const fx = ball.x - (paddle.x - dx * 0.5);
-      const fy = ball.y - (paddle.y - dy * 0.5);
-      const lenSq = dx * dx + dy * dy;
-      let t = (fx * dx + fy * dy) / lenSq;
-      t = Math.max(-0.5, Math.min(1.5, t));
-      const px2 = (paddle.x - dx * 0.5) + t * dx;
-      const py2 = (paddle.y - dy * 0.5) + t * dy;
-      const dist = Math.hypot(ball.x - px2, ball.y - py2);
-
-      if (dist < ball.radius + paddle.width * 0.5) {
-        const nx = (ball.x - px2) / (dist || 1);
-        const ny = (ball.y - py2) / (dist || 1);
-        ball.x = px2 + nx * (ball.radius + paddle.width * 0.5);
-        ball.y = py2 + ny * (ball.radius + paddle.width * 0.5);
-
-        // Launch velocity depends on paddle angle and movement
-        const launchPower = 8 + Math.abs(paddle.targetAngle - paddle.angle) * 5;
-        ball.vx = Math.cos(paddle.angle + (paddle === paddles.left ? 1 : -1)) * launchPower;
-        ball.vy = Math.sin(paddle.angle + (paddle === paddles.left ? 1 : -1)) * launchPower;
-
-        paddle.cooldown = 15;
-        playSound(300, 0.12, "square");
-      }
-    }
-
-    function update() {
-      if (!game.running) return;
-
-      // Handle launch
-      if (!plunger.launched) {
-        if (game.charging) {
-          plunger.power = Math.min(plunger.maxPower, plunger.power + 0.4);
-        }
-        ball.x = plunger.x;
-        ball.y = plunger.y;
-        return;
-      }
-
-      // Physics
-      ball.vy += physics.gravity;
-      ball.vx *= physics.friction;
-      ball.vy *= physics.friction;
-      ball.x += ball.vx;
-      ball.y += ball.vy;
-
-      // Boundary checks
-      if (ball.x - ball.radius < 10) {
-        ball.x = 10 + ball.radius;
-        ball.vx *= -physics.bounce;
-      }
-      if (ball.x + ball.radius > 270) {
-        ball.x = 270 - ball.radius;
-        ball.vx *= -physics.bounce;
-      }
-      if (ball.y - ball.radius < 10) {
-        ball.y = 10 + ball.radius;
-        ball.vy *= -physics.bounce;
-      }
-
-      // Collision detection
-      for (const bumper of bumpers) {
-        checkBumperCollision(bumper);
-      }
-      for (const wall of walls) {
-        checkWallCollision(wall);
-      }
-      checkPaddleCollision(paddles.left);
-      checkPaddleCollision(paddles.right);
-
-      // Drain (center gap at bottom)
-      if (ball.y > 390) {
-        if ((ball.x > 110 && ball.x < 170)) {
-          // Ball fell through drain
-          game.balls--;
-          if (game.balls <= 0) {
-            game.running = false;
-            game.gameOver = true;
-            if (game.score > game.best) {
-              game.best = game.score;
-              localStorage.setItem("pinballBest", String(game.best));
-            }
-            statusEl.textContent = "Game Over! Press Enter to restart.";
-          } else {
-            resetBall();
-          }
-        }
-      }
-
-      // Update paddle angles
-      paddles.left.angle += (paddles.left.targetAngle - paddles.left.angle) * 0.3;
-      paddles.right.angle += (paddles.right.targetAngle - paddles.right.angle) * 0.3;
-    }
-
-    function render() {
-      ctx.fillStyle = "#0a0a1a";
-      ctx.fillRect(0, 0, canvas.width, canvas.height);
-
-      // Draw walls
-      ctx.strokeStyle = "rgba(112, 221, 255, 0.6)";
-      ctx.lineWidth = 3;
-      for (const wall of walls) {
-        ctx.beginPath();
-        ctx.moveTo(wall.x1, wall.y1);
-        ctx.lineTo(wall.x2, wall.y2);
-        ctx.stroke();
-      }
-
-      // Draw bumpers
-      for (const bumper of bumpers) {
-        ctx.fillStyle = bumper.cooldown > 0 ? "rgba(255, 212, 103, 0.8)" : "rgba(255, 212, 103, 0.4)";
-        ctx.beginPath();
-        ctx.arc(bumper.x, bumper.y, bumper.r, 0, Math.PI * 2);
-        ctx.fill();
-        ctx.strokeStyle = "rgba(255, 255, 255, 0.8)";
-        ctx.lineWidth = 2;
-        ctx.stroke();
-      }
-
-      // Draw paddles
-      for (const paddle of [paddles.left, paddles.right]) {
-        ctx.save();
-        ctx.translate(paddle.x, paddle.y);
-        ctx.rotate(paddle.angle);
-        ctx.fillStyle = "rgba(112, 221, 255, 0.7)";
-        ctx.fillRect(-paddle.length * 0.5, -paddle.width * 0.5, paddle.length, paddle.width);
-        ctx.restore();
-      }
-
-      // Draw ball
-      ctx.fillStyle = "rgba(255, 255, 255, 0.9)";
-      ctx.beginPath();
-      ctx.arc(ball.x, ball.y, ball.radius, 0, Math.PI * 2);
-      ctx.fill();
-      ctx.strokeStyle = "rgba(112, 221, 255, 0.6)";
-      ctx.lineWidth = 1;
-      ctx.stroke();
-
-      // Draw plunger
-      if (!plunger.launched) {
-        ctx.fillStyle = "rgba(255, 109, 116, 0.6)";
-        ctx.fillRect(plunger.x - 4, plunger.y - 20 - plunger.power, 8, 20 + plunger.power);
-        ctx.strokeStyle = "rgba(255, 255, 255, 0.8)";
-        ctx.lineWidth = 1;
-        ctx.strokeRect(plunger.x - 4, plunger.y - 20 - plunger.power, 8, 20 + plunger.power);
-      }
-
-      // Draw title
-      ctx.fillStyle = "rgba(112, 221, 255, 0.8)";
-      ctx.font = "bold 12px Segoe UI";
-      ctx.fillText("ORBITAL GUARDIAN", 85, 20);
-    }
-
-    function updateHud() {
-      scoreEl.textContent = String(game.score);
-      bestEl.textContent = String(game.best);
-      ballsEl.textContent = String(game.balls);
-    }
-
-    function gameLoop() {
-      update();
-      render();
-      updateHud();
-      requestAnimationFrame(gameLoop);
-    }
-
-    // Input handling
-    document.addEventListener("keydown", (e) => {
-      if (e.code === "Space" && !plunger.launched && game.running) {
-        game.charging = true;
-        e.preventDefault();
-      }
-      if ((e.code === "ArrowLeft" || e.code === "KeyZ") && game.running) {
-        paddles.left.targetAngle = -1.2;
-        ensureAudio();
-        playSound(250, 0.05);
-      }
-      if ((e.code === "ArrowRight" || e.code === "KeyX") && game.running) {
-        paddles.right.targetAngle = 1.2;
-        ensureAudio();
-        playSound(280, 0.05);
-      }
-      if (e.code === "Enter" && game.gameOver) {
-        game.running = true;
-        game.gameOver = false;
-        game.score = 0;
-        game.balls = 3;
-        resetBall();
-      }
-    });
-
-    document.addEventListener("keyup", (e) => {
-      if (e.code === "Space") {
-        launchBall();
-      }
-      if (e.code === "ArrowLeft" || e.code === "KeyZ") {
-        paddles.left.targetAngle = -0.5;
-      }
-      if (e.code === "ArrowRight" || e.code === "KeyX") {
-        paddles.right.targetAngle = 0.5;
-      }
-    });
-
-    // Volume controls
-    volumeEl.addEventListener("input", (e) => {
-      audio.volume = parseInt(e.target.value) / 100;
-      volumeValueEl.textContent = e.target.value + "%";
-      updateAudioVolume();
-    });
-
-    muteButton.addEventListener("click", () => {
-      audio.muted = !audio.muted;
-      muteButton.textContent = audio.muted ? "Unmute" : "Mute";
-      updateAudioVolume();
-    });
-
-    bestEl.textContent = String(game.best);
-    gameLoop();
-  </script>
-</body>
-</html>
-<!doctype html>
-<html lang="en">
-<head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Orbital Guardian Pinball</title>
-  <style>
-    :root {
-      --bg-1: #040814;
-      --bg-2: #071a3f;
-      --panel: rgba(7, 17, 43, 0.88);
-      --line: rgba(129, 212, 255, 0.48);
-      --cyan: #70ddff;
-      --pink: #ff4de1;
-      --violet: #8d6cff;
-      --gold: #ffd467;
-      --red: #ff6d74;
-      --ink: #eaf5ff;
-      --muted: #9cb7db;
-      --glow: 0 0 22px rgba(112, 221, 255, 0.28);
+      --bg-0: #040b1a;
+      --bg-1: #081633;
+      --line: #79d7ff;
+      --accent: #ffd467;
+      --danger: #ff6d74;
+      --ink: #e9f5ff;
     }
 
     * {
@@ -903,242 +26,96 @@
       font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
       color: var(--ink);
       background:
-        radial-gradient(circle at 15% 10%, rgba(112, 221, 255, 0.2), transparent 30%),
-        radial-gradient(circle at 88% 22%, rgba(255, 109, 116, 0.14), transparent 28%),
-        radial-gradient(circle at 50% 110%, rgba(26, 63, 153, 0.78), transparent 56%),
-        linear-gradient(160deg, var(--bg-1), #07112a 42%, var(--bg-2));
-      overflow-x: hidden;
+        radial-gradient(circle at 15% 12%, rgba(121, 215, 255, 0.18), transparent 32%),
+        radial-gradient(circle at 80% 20%, rgba(255, 109, 116, 0.16), transparent 30%),
+        linear-gradient(165deg, var(--bg-0), var(--bg-1));
+      padding: 12px;
     }
 
-    .stars {
-      position: fixed;
-      inset: 0;
-      pointer-events: none;
-      opacity: 0.7;
-      background-image:
-        radial-gradient(2px 2px at 7% 12%, #fff, transparent),
-        radial-gradient(1px 1px at 12% 72%, #fff, transparent),
-        radial-gradient(2px 2px at 27% 29%, #d7f1ff, transparent),
-        radial-gradient(1px 1px at 42% 58%, #fff, transparent),
-        radial-gradient(2px 2px at 58% 18%, #fff, transparent),
-        radial-gradient(1px 1px at 74% 51%, #cceaff, transparent),
-        radial-gradient(2px 2px at 86% 79%, #fff, transparent),
-        radial-gradient(1px 1px at 93% 36%, #d7f1ff, transparent);
-      animation: starDrift 16s linear infinite;
+    .game-shell {
+      width: min(96vw, 620px);
     }
 
-    @keyframes starDrift {
-      0% { transform: translateY(0); }
-      50% { transform: translateY(-8px); }
-      100% { transform: translateY(0); }
-    }
-
-    .layout {
-      width: min(96vw, 1020px);
+    .hud {
       display: grid;
-      grid-template-columns: minmax(240px, 290px) minmax(320px, 1fr);
-      gap: 18px;
-      align-items: start;
-      padding: 16px;
-      z-index: 1;
-    }
-
-    .panel,
-    .board-wrap {
-      background: var(--panel);
-      border: 1px solid var(--line);
-      box-shadow: var(--glow);
-      backdrop-filter: blur(8px);
-      animation: neonPulse 2.8s ease-in-out infinite;
-    }
-
-    @keyframes neonPulse {
-      0% {
-        box-shadow: 0 0 16px rgba(112, 221, 255, 0.3), 0 0 24px rgba(141, 108, 255, 0.12);
-      }
-      50% {
-        box-shadow: 0 0 22px rgba(112, 221, 255, 0.42), 0 0 38px rgba(255, 77, 225, 0.2);
-      }
-      100% {
-        box-shadow: 0 0 16px rgba(112, 221, 255, 0.3), 0 0 24px rgba(141, 108, 255, 0.12);
-      }
-    }
-
-    .panel {
-      border-radius: 18px;
-      padding: 18px;
-    }
-
-    .title {
-      margin: 0 0 12px;
-      font-size: 1.22rem;
-      font-weight: 800;
-      line-height: 1.05;
-      text-transform: uppercase;
-      letter-spacing: 0.03em;
-    }
-
-    .title span {
-      display: block;
-      color: var(--cyan);
-      font-size: 0.8rem;
-      margin-top: 5px;
-      text-shadow: 0 0 10px rgba(112, 221, 255, 0.5);
-    }
-
-    .stats {
-      list-style: none;
-      margin: 0;
-      padding: 0;
-      display: grid;
-      gap: 10px;
-    }
-
-    .stats li {
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      padding-bottom: 8px;
-      border-bottom: 1px dashed rgba(170, 214, 255, 0.22);
-    }
-
-    .stats strong {
-      color: var(--gold);
-    }
-
-    .controls,
-    .notes {
-      margin-top: 16px;
-      font-size: 0.9rem;
-      line-height: 1.5;
-      color: var(--muted);
-    }
-
-    .volume-controls {
-      margin-top: 14px;
-      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
       gap: 8px;
-      color: var(--muted);
-      font-size: 0.88rem;
+      margin-bottom: 10px;
+      font-size: 13px;
     }
 
-    .volume-row {
-      display: flex;
-      align-items: center;
-      gap: 10px;
+    .hud-card {
+      padding: 8px;
+      border: 1px solid rgba(121, 215, 255, 0.45);
+      background: rgba(8, 22, 51, 0.75);
+      border-radius: 8px;
+      text-align: center;
     }
 
-    .volume-controls input[type="range"] {
-      width: 100%;
-      accent-color: var(--cyan);
-    }
-
-    .volume-controls button {
-      border: 1px solid rgba(112, 221, 255, 0.4);
-      border-radius: 10px;
-      background: rgba(10, 29, 66, 0.84);
-      color: var(--ink);
-      padding: 6px 10px;
-      cursor: pointer;
+    .hud-card b {
+      display: block;
+      font-size: 12px;
+      color: rgba(233, 245, 255, 0.8);
       font-weight: 600;
     }
 
-    .controls b,
-    .notes b {
-      color: var(--ink);
-    }
-
-    .status {
-      margin-top: 16px;
-      min-height: 56px;
-      padding: 12px;
-      border-radius: 14px;
-      background: rgba(12, 26, 62, 0.82);
-      border: 1px solid rgba(112, 221, 255, 0.18);
-      color: var(--cyan);
+    .hud-card span {
+      display: block;
+      margin-top: 4px;
       font-weight: 700;
-      display: grid;
-      align-content: center;
-      box-shadow: 0 0 14px rgba(112, 221, 255, 0.2) inset;
+      color: var(--accent);
     }
 
     .board-wrap {
-      border-radius: 22px;
-      padding: 12px;
-      background:
-        linear-gradient(145deg, rgba(8, 22, 57, 0.96), rgba(5, 12, 33, 0.96));
+      border-radius: 14px;
+      overflow: hidden;
+      border: 1px solid rgba(121, 215, 255, 0.5);
+      box-shadow: 0 0 24px rgba(121, 215, 255, 0.24);
+      background: rgba(8, 22, 51, 0.75);
     }
 
     canvas {
       width: 100%;
-      max-height: 90vh;
       height: auto;
       display: block;
-      border-radius: 16px;
       background:
-        radial-gradient(circle at 10% 25%, rgba(255, 77, 225, 0.12), transparent 30%),
-        radial-gradient(circle at 88% 72%, rgba(141, 108, 255, 0.15), transparent 35%),
-        radial-gradient(circle at 50% -12%, rgba(112, 221, 255, 0.24), transparent 52%),
-        linear-gradient(180deg, #0a163c 0%, #08112d 58%, #060b1d 100%);
+        radial-gradient(circle at 50% -10%, rgba(121, 215, 255, 0.22), transparent 40%),
+        linear-gradient(180deg, #0b1d43 0%, #08142f 60%, #060e22 100%);
     }
 
-    @media (max-width: 920px) {
-      .layout {
-        grid-template-columns: 1fr;
-      }
+    .help {
+      margin-top: 10px;
+      padding: 8px;
+      border: 1px solid rgba(121, 215, 255, 0.35);
+      border-radius: 8px;
+      background: rgba(8, 22, 51, 0.75);
+      font-size: 12px;
+      line-height: 1.5;
+      text-align: center;
+    }
 
-      .panel {
-        order: 2;
-      }
-
-      .board-wrap {
-        order: 1;
+    @media (max-width: 560px) {
+      .hud {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
       }
     }
   </style>
 </head>
 <body>
-  <div class="stars"></div>
-
-  <main class="layout" aria-label="US Space Force inspired pinball game">
-    <aside class="panel" aria-live="polite">
-      <h1 class="title">
-        Orbital Guardian
-        <span>US Space Force inspired pinball flight deck</span>
-      </h1>
-
-      <ul class="stats">
-        <li><span>Score</span><strong id="score">0</strong></li>
-        <li><span>Best</span><strong id="best">0</strong></li>
-        <li><span>Balls</span><strong id="balls">3</strong></li>
-        <li><span>Multiplier</span><strong id="multiplier">x1</strong></li>
-      </ul>
-
-      <section class="controls">
-        <div><b>Launch:</b> Hold Space, release to fire</div>
-        <div><b>Flippers:</b> Left and Right arrows</div>
-        <div><b>Restart:</b> Enter after game over</div>
-      </section>
-
-      <section class="volume-controls" aria-label="sound controls">
-        <div class="volume-row">
-          <b>Volume</b>
-          <span id="volumeValue">70%</span>
-          <button id="muteButton" type="button">Mute</button>
-        </div>
-        <input id="volume" type="range" min="0" max="100" value="70" step="1" />
-      </section>
-
-      <section class="notes">
-        <div><b>Theme cues:</b> delta iconography, orbital rings, guardians, squadron craft, command hull.</div>
-        <div><b>Objective:</b> keep the probe in flight, light orbit gates, stack multiplier hits, and avoid bonking any space janitors.</div>
-      </section>
-
-      <div class="status" id="status">Hold Space to charge the launch rail.</div>
-    </aside>
+  <main class="game-shell">
+    <section class="hud" aria-live="polite">
+      <div class="hud-card"><b>Score</b><span id="score">0</span></div>
+      <div class="hud-card"><b>Best</b><span id="best">0</span></div>
+      <div class="hud-card"><b>Balls</b><span id="balls">3</span></div>
+      <div class="hud-card"><b>Status</b><span id="status">Ready</span></div>
+    </section>
 
     <section class="board-wrap">
-      <canvas id="game" width="540" height="960" role="img" aria-label="Pinball board shaped like a spacecraft in flight"></canvas>
+      <canvas id="game" width="540" height="900" role="img" aria-label="Classic pinball playfield"></canvas>
+    </section>
+
+    <section class="help">
+      Hold Space to charge and release launch. Left Arrow or Z = left flipper. Right Arrow or X = right flipper. Enter = restart after game over.
     </section>
   </main>
 
@@ -1149,347 +126,107 @@
     const scoreEl = document.getElementById("score");
     const bestEl = document.getElementById("best");
     const ballsEl = document.getElementById("balls");
-    const multiplierEl = document.getElementById("multiplier");
     const statusEl = document.getElementById("status");
-    const volumeEl = document.getElementById("volume");
-    const volumeValueEl = document.getElementById("volumeValue");
-    const muteButton = document.getElementById("muteButton");
 
     const board = {
-      width: canvas.width,
-      height: canvas.height,
-      gravity: 0.2,
+      w: canvas.width,
+      h: canvas.height,
+      gravity: 0.22,
       friction: 0.996,
-      bounce: 0.88
+      bounce: 0.9
     };
 
     const state = {
-      running: true,
       score: 0,
       best: Number(localStorage.getItem("orbitalGuardianBest") || 0),
       balls: 3,
-      multiplier: 1,
-      comboTimer: 0,
-      launchPower: 0,
+      running: true,
+      gameOver: false,
       charging: false,
+      launchPower: 0,
+      maxCharge: 34,
       leftPressed: false,
-      rightPressed: false,
-      canRestart: false,
-      neonTick: 0,
-      introActive: false,
-      message: "Hold Space to charge the launch rail."
-    };
-
-    const quips = [
-      "Astronaut on coffee break - try not to boop the helmet.",
-      "Neon mode engaged. Sunglasses recommended.",
-      "Ground control says this is totally within budget.",
-      "Flight deck cat says this is a purr-fect trajectory.",
-      "Mission note: less screaming, more pinball precision."
-    ];
-
-    bestEl.textContent = String(state.best);
-
-    const ball = {
-      x: 495,
-      y: 240,
-      prevX: 495,
-      prevY: 240,
-      vx: 0,
-      vy: 0,
-      r: 10,
-      inShooterLane: true,
-      launchAssist: 0,
-      launched: false,
-      trail: []
-    };
-
-    const plunger = {
-      x: 485,
-      y: 50,
-      width: 20,
-      height: 160,
-      minPower: 5.6,
-      maxPower: 19.6,
-      maxCharge: 28
+      rightPressed: false
     };
 
     const launcher = {
-      holdX: 495,
-      holdY: 240,
-      laneLeftX: 475,
-      laneRightX: 515,
-      topExitY: 180,
-      antiReentryY: 300,
-      exitGuideX: 400,
-      exitGuideY: 150,
-      assistFrames: 20,
-      assistPush: 0.2,
-      onrampAngle: 0.28
+      laneLeft: 474,
+      laneRight: 520,
+      holdX: 498,
+      holdY: 835,
+      releaseY: 225,
+      minImpulse: 6,
+      maxImpulse: 19
+    };
+
+    const ball = {
+      x: launcher.holdX,
+      y: launcher.holdY,
+      vx: 0,
+      vy: 0,
+      r: 10,
+      launched: false,
+      inShooterLane: true
     };
 
     const bumpers = [
-      { x: 138, y: 140, r: 28, points: 180, pulse: 0, label: "ALPHA" },
-      { x: 270, y: 110, r: 26, points: 200, pulse: 0, label: "DELTA" },
-      { x: 402, y: 140, r: 28, points: 180, pulse: 0, label: "OMEGA" },
-      { x: 188, y: 240, r: 24, points: 160, pulse: 0, label: "NOVA" },
-      { x: 352, y: 240, r: 24, points: 160, pulse: 0, label: "PULSE" },
-      { x: 270, y: 320, r: 22, points: 140, pulse: 0, label: "ORBIT" }
-    ];
-
-    const gates = [
-      { x: 60, y: 380, w: 100, h: 14, points: 300, lit: 0, text: "LEFT" },
-      { x: 190, y: 60, w: 160, h: 14, points: 400, lit: 0, text: "CENTER" },
-      { x: 380, y: 380, w: 100, h: 14, points: 300, lit: 0, text: "RIGHT" }
-    ];
-
-    const beacons = [
-      { x: 85, y: 520, r: 16, points: 275, pulse: 0 },
-      { x: 455, y: 520, r: 16, points: 275, pulse: 0 },
-      { x: 270, y: 440, r: 14, points: 300, pulse: 0 }
+      { x: 180, y: 220, r: 38, points: 150, glow: 0 },
+      { x: 360, y: 220, r: 38, points: 150, glow: 0 },
+      { x: 270, y: 320, r: 34, points: 180, glow: 0 },
+      { x: 135, y: 410, r: 30, points: 120, glow: 0 },
+      { x: 405, y: 410, r: 30, points: 120, glow: 0 }
     ];
 
     const slings = [
-      { a: { x: 90, y: 800 }, b: { x: 160, y: 850 }, c: { x: 110, y: 880 }, power: 1.24 },
-      { a: { x: 450, y: 800 }, b: { x: 380, y: 850 }, c: { x: 430, y: 880 }, power: 1.24 }
+      { a: { x: 110, y: 700 }, b: { x: 220, y: 765 }, c: { x: 110, y: 805 }, pushX: -3.4 },
+      { a: { x: 430, y: 700 }, b: { x: 320, y: 765 }, c: { x: 430, y: 805 }, pushX: 3.4 }
     ];
 
     const flippers = {
-      left: {
-        pivot: { x: 205, y: 880 },
-        length: 75,
-        width: 14,
-        base: -0.34,
-        lift: -1.04,
-        current: -0.34
-      },
-      right: {
-        pivot: { x: 335, y: 880 },
-        length: 75,
-        width: 14,
-        base: Math.PI + 0.34,
-        lift: Math.PI + 1.04,
-        current: Math.PI + 0.34
-      }
+      left: { pivotX: 195, pivotY: 820, minX: 130, maxX: 260 },
+      right: { pivotX: 345, pivotY: 820, minX: 280, maxX: 410 }
     };
-
-    const walls = [
-      // Top border
-      { ax: 28, ay: 50, bx: 28, by: 400 },
-      { ax: 28, ay: 50, bx: 120, by: 28 },
-      { ax: 120, ay: 28, bx: 270, by: 20 },
-      { ax: 270, ay: 20, bx: 420, by: 28 },
-      { ax: 420, ay: 28, bx: 512, by: 50 },
-
-      // Right side (launcher area)
-      { ax: 512, ay: 50, bx: 512, by: 140 },
-      { ax: 512, ay: 140, bx: 500, by: 200 },
-      { ax: 500, ay: 200, bx: 480, by: 260 },
-      { ax: 480, ay: 260, bx: 500, by: 320 },
-      { ax: 500, ay: 320, bx: 512, by: 380 },
-      { ax: 512, ay: 380, bx: 512, by: 750 },
-
-      // Bottom right sling
-      { ax: 512, ay: 750, bx: 430, by: 800 },
-      { ax: 430, ay: 800, bx: 340, by: 850 },
-
-      // Center drain area (left sling bottom)
-      { ax: 340, ay: 850, bx: 200, by: 850 },
-
-      // Bottom left sling
-      { ax: 200, ay: 850, bx: 110, by: 800 },
-      { ax: 110, ay: 800, bx: 28, by: 750 },
-
-      // Left side (inlane)
-      { ax: 28, ay: 750, bx: 28, by: 380 },
-      { ax: 28, ay: 380, bx: 40, by: 320 },
-      { ax: 40, ay: 320, bx: 60, by: 260 },
-      { ax: 60, ay: 260, bx: 40, by: 200 },
-      { ax: 40, ay: 200, bx: 28, by: 140 },
-
-      // Launcher onramp - diagonal entry ramp
-      { ax: 500, ay: 200, bx: 480, by: 260 },
-      { ax: 480, ay: 260, bx: 460, by: 180 }
-    ];
-
-    const astronauts = [
-      { x: 78, y: 540, scale: 1, wave: 0.4, points: 420, radius: 38, spin: 0, glow: 0, cooldown: 0 },
-      { x: 462, y: 548, scale: 0.92, wave: 2.1, points: 420, radius: 38, spin: 0, glow: 0, cooldown: 0 },
-      { x: 270, y: 704, scale: 0.78, wave: 1.1, points: 520, radius: 34, spin: 0, glow: 0, cooldown: 0 }
-    ];
-
-    const audio = {
-      ctx: null,
-      master: null,
-      enabled: false,
-      volume: 0.7,
-      muted: false,
-      melodyNextAt: 0,
-      melodyIndex: 0
-    };
-
-    const asteroids = [
-      { x: 132, y: 448, r: 16, vx: 0.7, vy: 0.35, spin: 0, spinRate: 0.03, points: 180 },
-      { x: 404, y: 404, r: 13, vx: -0.6, vy: 0.3, spin: 0.9, spinRate: -0.04, points: 210 },
-      { x: 268, y: 548, r: 18, vx: 0.45, vy: 0.28, spin: 1.8, spinRate: 0.025, points: 260 }
-    ];
-
-    const particles = [];
-
-    function randomBetween(min, max) {
-      return min + Math.random() * (max - min);
-    }
-
-    function spawnBurst(x, y, color, count = 14) {
-      for (let i = 0; i < count; i += 1) {
-        const angle = Math.random() * Math.PI * 2;
-        const speed = randomBetween(1.4, 4.6);
-        particles.push({
-          x,
-          y,
-          vx: Math.cos(angle) * speed,
-          vy: Math.sin(angle) * speed,
-          life: randomBetween(26, 44),
-          maxLife: 44,
-          size: randomBetween(1.6, 4.2),
-          color
-        });
-      }
-    }
 
     function resetBall() {
       ball.x = launcher.holdX;
       ball.y = launcher.holdY;
-      ball.prevX = ball.x;
-      ball.prevY = ball.y;
       ball.vx = 0;
       ball.vy = 0;
-      ball.inShooterLane = true;
-      ball.launchAssist = 0;
       ball.launched = false;
-      ball.trail.length = 0;
-      state.launchPower = 0;
+      ball.inShooterLane = true;
       state.charging = false;
-      state.multiplier = 1;
-      state.comboTimer = 0;
-      state.message = "Hold Space to charge the launch rail. Aim for the bumpers!";
+      state.launchPower = 0;
+      statusEl.textContent = "Ready";
     }
 
-    function ensureAudio() {
-      if (audio.enabled) {
-        if (audio.ctx && audio.ctx.state === "suspended") {
-          audio.ctx.resume();
-        }
-        applyAudioVolume();
+    function restartGame() {
+      state.score = 0;
+      state.balls = 3;
+      state.running = true;
+      state.gameOver = false;
+      resetBall();
+    }
+
+    function launchBall() {
+      if (!state.running || ball.launched) {
         return;
       }
-      const AudioCtx = window.AudioContext || window.webkitAudioContext;
-      if (!AudioCtx) {
-        return;
-      }
-      audio.ctx = new AudioCtx();
-      audio.master = audio.ctx.createGain();
-      applyAudioVolume();
-      audio.master.connect(audio.ctx.destination);
-      audio.enabled = true;
-      audio.melodyNextAt = audio.ctx.currentTime;
-      playTone("triangle", 164.8, 0.42, 0.1, 132);
-    }
-
-    function applyAudioVolume() {
-      if (!audio.master) {
-        return;
-      }
-      const target = audio.muted ? 0 : 0.34 * audio.volume;
-      audio.master.gain.value = target;
-    }
-
-    function setAudioUi() {
-      const pct = Math.round(audio.volume * 100);
-      volumeValueEl.textContent = `${pct}%`;
-      muteButton.textContent = audio.muted ? "Unmute" : "Mute";
-    }
-
-    function playTone(type, frequency, duration, gain = 0.08, slideTo = frequency) {
-      if (!audio.enabled || !audio.ctx || !audio.master) {
-        return;
-      }
-      const t0 = audio.ctx.currentTime;
-      const osc = audio.ctx.createOscillator();
-      const env = audio.ctx.createGain();
-      osc.type = type;
-      osc.frequency.setValueAtTime(frequency, t0);
-      osc.frequency.linearRampToValueAtTime(slideTo, t0 + duration);
-      env.gain.setValueAtTime(0.0001, t0);
-      env.gain.exponentialRampToValueAtTime(gain, t0 + 0.015);
-      env.gain.exponentialRampToValueAtTime(0.0001, t0 + duration);
-      osc.connect(env);
-      env.connect(audio.master);
-      osc.start(t0);
-      osc.stop(t0 + duration + 0.02);
-    }
-
-    function playNoise(duration = 0.08, gain = 0.04) {
-      if (!audio.enabled || !audio.ctx || !audio.master) {
-        return;
-      }
-      const frames = Math.floor(audio.ctx.sampleRate * duration);
-      const buffer = audio.ctx.createBuffer(1, frames, audio.ctx.sampleRate);
-      const data = buffer.getChannelData(0);
-      for (let i = 0; i < frames; i += 1) {
-        data[i] = (Math.random() * 2 - 1) * (1 - i / frames);
-      }
-      const source = audio.ctx.createBufferSource();
-      const env = audio.ctx.createGain();
-      const t0 = audio.ctx.currentTime;
-      source.buffer = buffer;
-      env.gain.setValueAtTime(gain, t0);
-      env.gain.exponentialRampToValueAtTime(0.0001, t0 + duration);
-      source.connect(env);
-      env.connect(audio.master);
-      source.start(t0);
-      source.stop(t0 + duration + 0.02);
-    }
-
-    function updateAudioBed() {
-      if (!audio.enabled || !audio.ctx) {
-        return;
-      }
-      const pattern = [130.81, 164.81, 196.0, 164.81, 146.83, 174.61, 220.0, 174.61];
-      const now = audio.ctx.currentTime;
-      while (audio.melodyNextAt <= now + 0.05) {
-        const f = pattern[audio.melodyIndex % pattern.length];
-        const osc = audio.ctx.createOscillator();
-        const env = audio.ctx.createGain();
-        osc.type = "sine";
-        osc.frequency.setValueAtTime(f, audio.melodyNextAt);
-        osc.frequency.linearRampToValueAtTime(f * 1.005, audio.melodyNextAt + 0.34);
-        env.gain.setValueAtTime(0.0001, audio.melodyNextAt);
-        env.gain.exponentialRampToValueAtTime(0.05, audio.melodyNextAt + 0.03);
-        env.gain.exponentialRampToValueAtTime(0.0001, audio.melodyNextAt + 0.32);
-        osc.connect(env);
-        env.connect(audio.master);
-        osc.start(audio.melodyNextAt);
-        osc.stop(audio.melodyNextAt + 0.34);
-        audio.melodyNextAt += 0.36;
-        audio.melodyIndex += 1;
-      }
-    }
-
-    function addScore(points) {
-      state.score += Math.floor(points * state.multiplier);
-      state.comboTimer = 260;
-      if (state.multiplier < 5) {
-        state.multiplier = Math.min(5, Number((state.multiplier + 0.1).toFixed(1)));
-      }
+      const n = state.launchPower / state.maxCharge;
+      const impulse = launcher.minImpulse + (launcher.maxImpulse - launcher.minImpulse) * n;
+      ball.launched = true;
+      ball.inShooterLane = true;
+      ball.vx = -0.8;
+      ball.vy = -impulse;
+      state.charging = false;
+      statusEl.textContent = "Launched";
     }
 
     function loseBall() {
       state.balls -= 1;
       if (state.balls <= 0) {
         state.running = false;
-        state.canRestart = true;
-        state.message = "Flight lost. Press Enter to redeploy.";
+        state.gameOver = true;
+        statusEl.textContent = "Game Over";
         if (state.score > state.best) {
           state.best = state.score;
           localStorage.setItem("orbitalGuardianBest", String(state.best));
@@ -1499,952 +236,344 @@
       }
     }
 
-    function restartGame() {
-      state.running = true;
-      state.score = 0;
-      state.balls = 3;
-      state.multiplier = 1;
-      state.comboTimer = 0;
-      state.canRestart = false;
-      state.introActive = false;
-      state.message = "Hold Space to charge the launch rail.";
-      particles.length = 0;
-      resetBall();
+    function addScore(points) {
+      state.score += points;
     }
 
-    function distanceToSegment(px, py, x1, y1, x2, y2) {
-      const dx = x2 - x1;
-      const dy = y2 - y1;
-      const lenSq = dx * dx + dy * dy;
-      let t = ((px - x1) * dx + (py - y1) * dy) / (lenSq || 1);
-      t = Math.max(0, Math.min(1, t));
-      const sx = x1 + t * dx;
-      const sy = y1 + t * dy;
-      const ddx = px - sx;
-      const ddy = py - sy;
-      return { dist: Math.hypot(ddx, ddy), sx, sy, nx: ddx, ny: ddy, t };
-    }
-
-    function reflectAgainstNormal(nx, ny, power = board.bounce) {
+    function reflect(nx, ny) {
       const dot = ball.vx * nx + ball.vy * ny;
       if (dot < 0) {
-        ball.vx -= (1 + power) * dot * nx;
-        ball.vy -= (1 + power) * dot * ny;
+        ball.vx -= (1 + board.bounce) * dot * nx;
+        ball.vy -= (1 + board.bounce) * dot * ny;
       }
     }
 
-    function applyWallCollisions() {
-      for (const wall of walls) {
-        const hit = distanceToSegment(ball.x, ball.y, wall.ax, wall.ay, wall.bx, wall.by);
-        if (hit.dist < ball.r) {
-          const inv = 1 / (hit.dist || 0.001);
-          const nx = hit.nx * inv;
-          const ny = hit.ny * inv;
-          const push = ball.r - hit.dist;
-          ball.x += nx * push;
-          ball.y += ny * push;
-          reflectAgainstNormal(nx, ny, 0.92);
-        }
+    function hitCircle(cx, cy, r, kick) {
+      const dx = ball.x - cx;
+      const dy = ball.y - cy;
+      const dist = Math.hypot(dx, dy);
+      const minDist = r + ball.r;
+      if (dist < minDist) {
+        const nx = dx / (dist || 0.001);
+        const ny = dy / (dist || 0.001);
+        ball.x = cx + nx * minDist;
+        ball.y = cy + ny * minDist;
+        const speed = Math.max(kick, Math.hypot(ball.vx, ball.vy));
+        ball.vx = nx * speed;
+        ball.vy = ny * speed;
+        return true;
       }
+      return false;
     }
 
-    function applyLaunchAssist() {
-      if (ball.launchAssist <= 0) {
-        return;
-      }
-      ball.vx -= launcher.assistPush;
-      ball.launchAssist -= 1;
+    function pointInTriangle(px, py, tri) {
+      const s = (p1, p2, p3) => (p1.x - p3.x) * (p2.y - p3.y) - (p2.x - p3.x) * (p1.y - p3.y);
+      const p = { x: px, y: py };
+      const b1 = s(p, tri.a, tri.b) < 0;
+      const b2 = s(p, tri.b, tri.c) < 0;
+      const b3 = s(p, tri.c, tri.a) < 0;
+      return b1 === b2 && b2 === b3;
     }
 
-    function updateShooterLane(launchImpulse) {
+    function updateShooterLane() {
       if (!ball.inShooterLane) {
         return;
       }
 
-      // Confine ball to launcher lane width
-      const minX = launcher.laneLeftX + ball.r;
-      const maxX = launcher.laneRightX - ball.r;
+      const minX = launcher.laneLeft + ball.r;
+      const maxX = launcher.laneRight - ball.r;
       ball.x = Math.max(minX, Math.min(maxX, ball.x));
 
-      // If ball reaches upper-left area of playfield, it has successfully launched
-      if (ball.y > launcher.topExitY && ball.x < launcher.exitGuideX) {
+      // Successful launch exits at top-right and redirects into playfield.
+      if (ball.y <= launcher.releaseY) {
         ball.inShooterLane = false;
-        ball.launchAssist = launcher.assistFrames;
+        ball.x = 452;
+        ball.y = 215;
+        ball.vx = -5.2;
+        ball.vy = Math.min(ball.vy, -5.4);
       }
 
-      // Ball falls back to launcher if it doesn't have enough momentum
-      // (gravity will naturally pull weak shots back down the ramp to launcher)
-      if (ball.x > 480 && ball.y < 360 && ball.vy > 2) {
-        // Ball is rolling back toward launcher
-        ball.x = Math.min(ball.x, launcher.holdX);
-        ball.y = Math.max(ball.y, launcher.holdY);
+      // Weak launch falls back to plunger lane for another try.
+      if (ball.vy > 0 && ball.y > launcher.holdY - 8) {
+        ball.x = launcher.holdX;
+        ball.y = launcher.holdY;
+        ball.vx = 0;
+        ball.vy = 0;
+        ball.launched = false;
+        state.launchPower = 0;
+        statusEl.textContent = "Retry Launch";
       }
     }
 
-    function applyBoundaryContainment() {
+    function applyBoundaries() {
+      // Left wall
       if (ball.x - ball.r < 22) {
         ball.x = 22 + ball.r;
-        ball.vx = Math.abs(ball.vx) * 0.88;
+        ball.vx = Math.abs(ball.vx) * 0.86;
       }
 
-      // Block re-entry into launcher once ball is in play
-      if (!ball.inShooterLane && ball.x > 480 && ball.y < 300) {
-        ball.x = 470 - ball.r;
+      // Top wall
+      if (ball.y - ball.r < 22) {
+        ball.y = 22 + ball.r;
+        ball.vy = Math.abs(ball.vy) * 0.86;
+      }
+
+      // Right outer wall
+      if (ball.x + ball.r > 520) {
+        ball.x = 520 - ball.r;
+        ball.vx = -Math.abs(ball.vx) * 0.86;
+      }
+
+      // Lockout from entering shooter lane after launch.
+      if (!ball.inShooterLane && ball.x + ball.r > launcher.laneLeft && ball.y > 255) {
+        ball.x = launcher.laneLeft - ball.r;
         ball.vx = -Math.abs(ball.vx) * 0.9;
       }
 
-      if (ball.x + ball.r > 520) {
-        ball.x = 520 - ball.r;
-        ball.vx = -Math.abs(ball.vx) * 0.88;
-      }
-
-      if (ball.y - ball.r < 12) {
-        ball.y = 12 + ball.r;
-        ball.vy = Math.abs(ball.vy) * 0.82;
-      }
-
-      // If ball falls below playfield, it's lost
-      if (ball.y - ball.r > board.height + 16) {
+      // Drain area
+      if (ball.y - ball.r > board.h + 12) {
         loseBall();
       }
     }
 
-    function updateFlippers() {
-      const leftTarget = state.leftPressed ? flippers.left.lift : flippers.left.base;
-      const rightTarget = state.rightPressed ? flippers.right.lift : flippers.right.base;
-      flippers.left.current += (leftTarget - flippers.left.current) * 0.3;
-      flippers.right.current += (rightTarget - flippers.right.current) * 0.3;
-    }
-
-    function applyFlipperCollision(flipper, boosted) {
-      const x1 = flipper.pivot.x;
-      const y1 = flipper.pivot.y;
-      const x2 = x1 + Math.cos(flipper.current) * flipper.length;
-      const y2 = y1 + Math.sin(flipper.current) * flipper.length;
-      const hit = distanceToSegment(ball.x, ball.y, x1, y1, x2, y2);
-      const radius = flipper.width * 0.5 + ball.r;
-      if (hit.dist < radius) {
-        const inv = 1 / (hit.dist || 0.001);
-        const nx = hit.nx * inv;
-        const ny = hit.ny * inv;
-        const push = radius - hit.dist;
-        ball.x += nx * push;
-        ball.y += ny * push;
-        reflectAgainstNormal(nx, ny, 0.98);
-
-        const tangentBoost = boosted ? 1.95 : 1.06;
-        const liftBoost = boosted ? 2.95 : 1.0;
-        ball.vx += (x2 - x1) * 0.003 * tangentBoost;
-        ball.vy += (y2 - y1) * 0.003 * tangentBoost - liftBoost;
-      }
-    }
-
-    function applyBumperCollisions() {
-      for (const bumper of bumpers) {
-        const dx = ball.x - bumper.x;
-        const dy = ball.y - bumper.y;
-        const minDist = ball.r + bumper.r;
-        const dist = Math.hypot(dx, dy);
-        if (dist < minDist) {
-          const nx = dx / (dist || 0.001);
-          const ny = dy / (dist || 0.001);
-          const push = minDist - dist;
-          ball.x += nx * push;
-          ball.y += ny * push;
-          const speed = Math.max(5.6, Math.hypot(ball.vx, ball.vy));
-          ball.vx = nx * speed + (Math.random() - 0.5) * 1.3;
-          ball.vy = ny * speed - 0.8;
-          bumper.pulse = 1;
-          spawnBurst(bumper.x, bumper.y, "112,221,255", 18);
-          addScore(bumper.points);
-          playTone("square", 560, 0.1, 0.055, 740);
-          playTone("triangle", 330, 0.12, 0.04, 250);
-          state.message = bumper.label + " target confirmed. " + quips[Math.floor(Math.random() * quips.length)];
-        }
-        bumper.pulse *= 0.9;
-      }
-    }
-
-    function applyBeaconCollisions() {
-      for (const beacon of beacons) {
-        const dx = ball.x - beacon.x;
-        const dy = ball.y - beacon.y;
-        const minDist = ball.r + beacon.r;
-        const dist = Math.hypot(dx, dy);
-        if (dist < minDist) {
-          const nx = dx / (dist || 0.001);
-          const ny = dy / (dist || 0.001);
-          const push = minDist - dist;
-          ball.x += nx * push;
-          ball.y += ny * push;
-          ball.vx += nx * 2.2;
-          ball.vy += ny * 2.2 - 1.6;
-          beacon.pulse = 1;
-          spawnBurst(beacon.x, beacon.y, "255,109,116", 16);
-          addScore(beacon.points);
-          playTone("triangle", 420, 0.18, 0.045, 620);
-          state.message = "Beacon uplink acquired. " + quips[Math.floor(Math.random() * quips.length)];
-        }
-        beacon.pulse *= 0.9;
-      }
-    }
-
-    function pointInTriangle(px, py, tri) {
-      const sign = (p1, p2, p3) => (p1.x - p3.x) * (p2.y - p3.y) - (p2.x - p3.x) * (p1.y - p3.y);
-      const pt = { x: px, y: py };
-      const b1 = sign(pt, tri.a, tri.b) < 0;
-      const b2 = sign(pt, tri.b, tri.c) < 0;
-      const b3 = sign(pt, tri.c, tri.a) < 0;
-      return b1 === b2 && b2 === b3;
-    }
-
-    function applySlingCollisions() {
+    function applySlings() {
       for (const sling of slings) {
         if (pointInTriangle(ball.x, ball.y, sling)) {
-          const dir = sling.a.x < board.width / 2 ? 1 : -1;
-          ball.vx += 3.9 * dir;
-          ball.vy -= 5.2 * sling.power;
-          spawnBurst(ball.x, ball.y, "255,77,225", 10);
-          addScore(110);
-          playTone("sawtooth", 240, 0.11, 0.035, 190);
-          state.message = "Thruster sling engaged. " + quips[Math.floor(Math.random() * quips.length)];
+          ball.vx += sling.pushX;
+          ball.vy = -Math.max(6.2, Math.abs(ball.vy) + 1.8);
+          addScore(90);
         }
       }
     }
 
-    function applyGateCollisions() {
-      for (const gate of gates) {
-        if (
-          ball.x + ball.r > gate.x &&
-          ball.x - ball.r < gate.x + gate.w &&
-          ball.y + ball.r > gate.y &&
-          ball.y - ball.r < gate.y + gate.h
-        ) {
-          if (ball.vy > 0) {
-            ball.y = gate.y + gate.h + ball.r;
-            ball.vy = Math.abs(ball.vy) * 0.92;
-          } else {
-            ball.y = gate.y - ball.r;
-            ball.vy = -Math.abs(ball.vy) * 0.92;
-          }
-          gate.lit = 1;
-          spawnBurst(ball.x, ball.y, "255,212,103", 14);
-          addScore(gate.points);
-          playTone("sine", 680, 0.09, 0.03, 770);
-          state.message = gate.text + " gate cleared.";
-        }
-        gate.lit *= 0.92;
+    function applyFlippers() {
+      if (ball.y < 765 || ball.y > 860 || ball.vy <= 0) {
+        return;
       }
-    }
 
-    function applyAsteroidCollisions() {
-      for (const asteroid of asteroids) {
-        const dx = ball.x - asteroid.x;
-        const dy = ball.y - asteroid.y;
-        const minDist = ball.r + asteroid.r;
-        const dist = Math.hypot(dx, dy);
-        if (dist < minDist) {
-          const nx = dx / (dist || 0.001);
-          const ny = dy / (dist || 0.001);
-          const push = minDist - dist;
-          ball.x += nx * push;
-          ball.y += ny * push;
-
-          const speed = Math.max(5.2, Math.hypot(ball.vx, ball.vy));
-          ball.vx = nx * speed + asteroid.vx * 0.8;
-          ball.vy = ny * speed + asteroid.vy * 0.8;
-
-          asteroid.vx *= -1;
-          asteroid.vy *= -1;
-          spawnBurst(asteroid.x, asteroid.y, "187,161,120", 16);
-          addScore(asteroid.points);
-          playNoise(0.07, 0.03);
-          playTone("triangle", 190, 0.08, 0.03, 130);
-          state.message = "Asteroid bonk detected. Nobody tell accounting.";
-        }
+      // Left flipper zone
+      if (ball.x > flippers.left.minX && ball.x < flippers.left.maxX) {
+        const lift = state.leftPressed ? 13 : 8;
+        const pushX = state.leftPressed ? -3.8 : -1.6;
+        ball.vy = -lift;
+        ball.vx += pushX;
+        ball.y = 762;
       }
-    }
 
-    function applyAstronautFlybys() {
-      for (const astronaut of astronauts) {
-        if (astronaut.cooldown > 0) {
-          astronaut.cooldown -= 1;
-        }
-
-        const bobY = astronaut.y + Math.sin(state.neonTick + astronaut.wave) * 5;
-        const crossedUnder = ball.prevY < bobY + 3 && ball.y >= bobY + 3;
-        const inColumn = Math.abs(ball.x - astronaut.x) < astronaut.radius;
-        if (crossedUnder && inColumn && astronaut.cooldown <= 0) {
-          astronaut.spin = Math.PI * 2;
-          astronaut.glow = 1;
-          astronaut.cooldown = 44;
-          addScore(astronaut.points);
-          playTone("square", 740, 0.09, 0.04, 940);
-          state.message = "Astronaut flyby bonus scored.";
-        }
-
-        astronaut.spin *= 0.84;
-        astronaut.glow *= 0.9;
-      }
-    }
-
-    function updateAsteroids() {
-      for (const asteroid of asteroids) {
-        asteroid.x += asteroid.vx;
-        asteroid.y += asteroid.vy;
-        asteroid.spin += asteroid.spinRate;
-
-        if (asteroid.x < 56 || asteroid.x > 444) {
-          asteroid.vx *= -1;
-        }
-        if (asteroid.y < 352 || asteroid.y > 700) {
-          asteroid.vy *= -1;
-        }
-      }
-    }
-
-    function updateParticles() {
-      for (let i = particles.length - 1; i >= 0; i -= 1) {
-        const p = particles[i];
-        p.x += p.vx;
-        p.y += p.vy;
-        p.vx *= 0.97;
-        p.vy *= 0.97;
-        p.vy += 0.02;
-        p.life -= 1;
-        if (p.life <= 0) {
-          particles.splice(i, 1);
-        }
+      // Right flipper zone
+      if (ball.x > flippers.right.minX && ball.x < flippers.right.maxX) {
+        const lift = state.rightPressed ? 13 : 8;
+        const pushX = state.rightPressed ? 3.8 : 1.6;
+        ball.vy = -lift;
+        ball.vx += pushX;
+        ball.y = 762;
       }
     }
 
     function updatePhysics() {
-      updateFlippers();
-      state.neonTick += 0.02;
-      updateParticles();
-
       if (!state.running) {
         return;
       }
 
       if (!ball.launched) {
         ball.x = launcher.holdX;
-        ball.y = launcher.holdY + state.launchPower * 1.8;
-        ball.prevX = ball.x;
-        ball.prevY = ball.y;
-        ball.inShooterLane = true;
-        ball.launchAssist = 0;
+        ball.y = launcher.holdY + state.launchPower * 1.4;
         if (state.charging) {
-          state.launchPower = Math.min(plunger.maxCharge, state.launchPower + 0.22);
+          state.launchPower = Math.min(state.maxCharge, state.launchPower + 0.3);
+          statusEl.textContent = "Charging";
         }
         return;
       }
 
-      ball.prevX = ball.x;
-      ball.prevY = ball.y;
       ball.vy += board.gravity;
       ball.vx *= board.friction;
       ball.vy *= board.friction;
       ball.x += ball.vx;
       ball.y += ball.vy;
 
-      updateShooterLane(Math.abs(ball.vy));
-      applyLaunchAssist();
-      applyWallCollisions();
-      applyBoundaryContainment();
-      applyBumperCollisions();
-      applyBeaconCollisions();
-      applySlingCollisions();
-      applyGateCollisions();
-      updateAsteroids();
-      applyAsteroidCollisions();
-      applyAstronautFlybys();
-      applyFlipperCollision(flippers.left, state.leftPressed);
-      applyFlipperCollision(flippers.right, state.rightPressed);
-      updateAudioBed();
+      updateShooterLane();
+      applyBoundaries();
 
-      ball.trail.push({ x: ball.x, y: ball.y });
-      if (ball.trail.length > 16) {
-        ball.trail.shift();
+      for (const b of bumpers) {
+        if (hitCircle(b.x, b.y, b.r, 7.1)) {
+          b.glow = 1;
+          addScore(b.points);
+        }
+        b.glow *= 0.88;
       }
 
-      if (state.comboTimer > 0) {
-        state.comboTimer -= 1;
-      } else if (state.multiplier > 1) {
-        state.multiplier = Math.max(1, Number((state.multiplier - 0.01).toFixed(2)));
-      }
+      applySlings();
+      applyFlippers();
     }
 
-    function drawLargeTypography() {
-      ctx.save();
-      ctx.translate(270, 470);
-      ctx.rotate(-Math.PI / 2);
-      ctx.font = "900 74px Segoe UI";
-      ctx.fillStyle = "rgba(197, 225, 255, 0.08)";
-      ctx.fillText("SPACE FORCE", -255, 0);
-      ctx.shadowColor = "rgba(255, 77, 225, 0.6)";
-      ctx.shadowBlur = 18;
-      ctx.font = "900 32px Segoe UI";
-      ctx.fillStyle = "rgba(255, 77, 225, 0.3)";
-      ctx.fillText("NEON GUARDIAN", -245, -54);
-      ctx.restore();
-    }
+    function drawBoard() {
+      // Outer border
+      ctx.strokeStyle = "rgba(121, 215, 255, 0.85)";
+      ctx.lineWidth = 4;
+      ctx.strokeRect(20, 20, 500, 860);
 
-    function drawNeonGrid() {
-      ctx.save();
-      ctx.translate(270, 935);
-      const pulse = 0.4 + Math.sin(state.neonTick) * 0.2;
-      ctx.strokeStyle = `rgba(141, 108, 255, ${0.24 + pulse * 0.3})`;
-      ctx.lineWidth = 1;
-      for (let i = -300; i <= 300; i += 24) {
-        ctx.beginPath();
-        ctx.moveTo(i, 0);
-        ctx.lineTo(i * 0.45, -220);
-        ctx.stroke();
-      }
-      for (let y = 0; y <= 220; y += 20) {
-        ctx.beginPath();
-        ctx.moveTo(-300 + y * 0.7, -y);
-        ctx.lineTo(300 - y * 0.7, -y);
-        ctx.stroke();
-      }
-      ctx.restore();
-    }
-
-    function drawStarField() {
-      ctx.save();
-      ctx.fillStyle = "rgba(161, 220, 255, 0.2)";
-      const time = performance.now() * 0.02;
-      for (let i = 0; i < 26; i += 1) {
-        const x = ((i * 83) + time) % 460 + 36;
-        const y = (i * 59) % 720 + 54;
-        ctx.fillRect(x, y, 2, 2);
-      }
-      ctx.restore();
-    }
-
-    function drawShipHull() {
-      ctx.save();
-
-      const hull = ctx.createLinearGradient(270, 40, 270, 900);
-      hull.addColorStop(0, "rgba(17, 41, 98, 0.6)");
-      hull.addColorStop(0.45, "rgba(15, 31, 74, 0.84)");
-      hull.addColorStop(1, "rgba(8, 17, 39, 0.92)");
-      ctx.fillStyle = hull;
-
-      ctx.beginPath();
-      ctx.moveTo(270, 28);
-      ctx.lineTo(386, 82);
-      ctx.lineTo(420, 178);
-      ctx.lineTo(396, 344);
-      ctx.lineTo(438, 556);
-      ctx.lineTo(430, 722);
-      ctx.lineTo(352, 850);
-      ctx.lineTo(270, 894);
-      ctx.lineTo(188, 850);
-      ctx.lineTo(110, 722);
-      ctx.lineTo(102, 556);
-      ctx.lineTo(144, 344);
-      ctx.lineTo(120, 178);
-      ctx.lineTo(154, 82);
-      ctx.closePath();
-      ctx.fill();
-
-      ctx.strokeStyle = "rgba(132, 211, 255, 0.28)";
-      ctx.lineWidth = 2;
-      ctx.stroke();
-
-      ctx.fillStyle = "rgba(112, 221, 255, 0.08)";
-      ctx.beginPath();
-      ctx.moveTo(270, 84);
-      ctx.lineTo(334, 170);
-      ctx.lineTo(310, 700);
-      ctx.lineTo(270, 838);
-      ctx.lineTo(230, 700);
-      ctx.lineTo(206, 170);
-      ctx.closePath();
-      ctx.fill();
-
-      ctx.strokeStyle = "rgba(255, 212, 103, 0.14)";
-      ctx.beginPath();
-      ctx.moveTo(173, 240);
-      ctx.lineTo(367, 240);
-      ctx.moveTo(154, 520);
-      ctx.lineTo(386, 520);
-      ctx.moveTo(135, 675);
-      ctx.lineTo(405, 675);
-      ctx.stroke();
-
-      ctx.restore();
-    }
-
-    function drawCarrier(x, y, scale, glow) {
-      ctx.save();
-      ctx.translate(x, y);
-      ctx.scale(scale, scale);
-      ctx.shadowColor = "rgba(112, 221, 255, 0.8)";
-      ctx.shadowBlur = glow;
-      const hull = ctx.createLinearGradient(0, -40, 0, 36);
-      hull.addColorStop(0, "rgba(228, 240, 255, 0.95)");
-      hull.addColorStop(1, "rgba(123, 164, 226, 0.82)");
-      ctx.fillStyle = hull;
-      ctx.beginPath();
-      ctx.moveTo(0, -42);
-      ctx.lineTo(30, -16);
-      ctx.lineTo(34, 8);
-      ctx.lineTo(20, 30);
-      ctx.lineTo(0, 36);
-      ctx.lineTo(-20, 30);
-      ctx.lineTo(-34, 8);
-      ctx.lineTo(-30, -16);
-      ctx.closePath();
-      ctx.fill();
-      ctx.strokeStyle = "rgba(255, 255, 255, 0.9)";
-      ctx.lineWidth = 1.6;
-      ctx.stroke();
-
-      ctx.shadowBlur = 0;
-      ctx.fillStyle = "rgba(30, 55, 108, 0.95)";
-      ctx.beginPath();
-      ctx.ellipse(0, -8, 13, 7, 0, 0, Math.PI * 2);
-      ctx.fill();
-
-      ctx.fillStyle = "rgba(255, 91, 236, 0.78)";
-      ctx.fillRect(-4, 31, 8, 10);
-      ctx.restore();
-    }
-
-    function drawAstronaut(astronaut) {
-      const x = astronaut.x;
-      const y = astronaut.y;
-      const scale = astronaut.scale;
-      const wave = astronaut.wave;
-      const spin = astronaut.spin;
-      const glow = astronaut.glow;
-      ctx.save();
-      ctx.translate(x, y + Math.sin(state.neonTick + wave) * 5);
-      ctx.rotate(spin);
-      ctx.scale(scale, scale);
-
-      ctx.shadowColor = "rgba(112, 221, 255, 0.9)";
-      ctx.shadowBlur = 12;
-      ctx.fillStyle = glow > 0.2 ? "rgba(255, 232, 143, 0.96)" : "rgba(238, 245, 255, 0.95)";
-      ctx.beginPath();
-      ctx.arc(0, -18, 11, 0, Math.PI * 2);
-      ctx.fill();
-      ctx.fillRect(-10, -7, 20, 26);
-      ctx.fillRect(-15, -3, 6, 18);
-      ctx.fillRect(9, -3, 6, 18);
-      ctx.fillRect(-9, 19, 6, 14);
-      ctx.fillRect(3, 19, 6, 14);
-
-      ctx.shadowBlur = 0;
-      ctx.fillStyle = "rgba(70, 140, 220, 0.95)";
-      ctx.beginPath();
-      ctx.arc(0, -18, 7, 0, Math.PI * 2);
-      ctx.fill();
-
-      ctx.fillStyle = glow > 0.2 ? "rgba(255, 124, 66, 0.95)" : "rgba(255, 77, 225, 0.9)";
-      ctx.fillRect(-8, 1, 16, 5);
-      ctx.restore();
-    }
-
-    function drawSpaceForceSymbol(x, y, scale, alpha) {
-      ctx.save();
-      ctx.translate(x, y);
-      ctx.scale(scale, scale);
-      ctx.globalAlpha = alpha;
-
-      ctx.strokeStyle = "rgba(112, 221, 255, 0.78)";
+      // Inner arch shape lines
+      ctx.strokeStyle = "rgba(121, 215, 255, 0.6)";
       ctx.lineWidth = 3;
       ctx.beginPath();
-      ctx.arc(0, 0, 24, 0.2, Math.PI * 1.8);
+      ctx.moveTo(70, 110);
+      ctx.quadraticCurveTo(270, 10, 470, 110);
       ctx.stroke();
 
-      ctx.fillStyle = "rgba(255, 212, 103, 0.9)";
       ctx.beginPath();
-      ctx.moveTo(0, -22);
-      ctx.lineTo(16, 18);
-      ctx.lineTo(0, 8);
-      ctx.lineTo(-16, 18);
-      ctx.closePath();
+      ctx.moveTo(72, 105);
+      ctx.lineTo(72, 520);
+      ctx.quadraticCurveTo(72, 610, 120, 680);
+      ctx.stroke();
+
+      ctx.beginPath();
+      ctx.moveTo(468, 105);
+      ctx.lineTo(468, 250);
+      ctx.stroke();
+
+      // Shooter lane
+      ctx.strokeStyle = "rgba(121, 215, 255, 0.8)";
+      ctx.lineWidth = 3;
+      ctx.strokeRect(launcher.laneLeft, 90, launcher.laneRight - launcher.laneLeft, 770);
+
+      // Launcher top guide ramp into playfield
+      ctx.beginPath();
+      ctx.moveTo(launcher.laneLeft, 260);
+      ctx.lineTo(450, 210);
+      ctx.lineTo(430, 175);
+      ctx.stroke();
+
+      // Bottom inlane guides
+      ctx.beginPath();
+      ctx.moveTo(92, 815);
+      ctx.lineTo(170, 850);
+      ctx.stroke();
+
+      ctx.beginPath();
+      ctx.moveTo(448, 815);
+      ctx.lineTo(370, 850);
+      ctx.stroke();
+
+      // Flippers and pivots
+      ctx.fillStyle = "rgba(121, 215, 255, 0.85)";
+      ctx.beginPath();
+      ctx.arc(flippers.left.pivotX, flippers.left.pivotY, 10, 0, Math.PI * 2);
+      ctx.arc(flippers.right.pivotX, flippers.right.pivotY, 10, 0, Math.PI * 2);
       ctx.fill();
 
-      ctx.fillStyle = "rgba(234, 245, 255, 0.95)";
-      ctx.beginPath();
-      ctx.arc(0, -4, 3.8, 0, Math.PI * 2);
-      ctx.fill();
-      ctx.restore();
-    }
-
-    function drawFighter(x, y, scale, rotation, color) {
-      ctx.save();
-      ctx.translate(x, y);
-      ctx.rotate(rotation);
-      ctx.scale(scale, scale);
-      ctx.shadowColor = "rgba(112, 221, 255, 0.72)";
-      ctx.shadowBlur = 10;
-      ctx.fillStyle = color;
-      ctx.strokeStyle = "rgba(255, 255, 255, 0.7)";
-      ctx.lineWidth = 1.5;
-      ctx.beginPath();
-      ctx.moveTo(0, -30);
-      ctx.lineTo(10, -14);
-      ctx.lineTo(26, -2);
-      ctx.lineTo(34, 7);
-      ctx.lineTo(13, 10);
-      ctx.lineTo(8, 25);
-      ctx.lineTo(0, 16);
-      ctx.lineTo(-8, 25);
-      ctx.lineTo(-13, 10);
-      ctx.lineTo(-34, 7);
-      ctx.lineTo(-26, -2);
-      ctx.lineTo(-10, -14);
-      ctx.closePath();
-      ctx.fill();
-      ctx.stroke();
-
-      ctx.shadowBlur = 0;
-      ctx.fillStyle = "rgba(23, 42, 87, 0.9)";
-      ctx.beginPath();
-      ctx.ellipse(0, -8, 8, 5, 0, 0, Math.PI * 2);
-      ctx.fill();
-
-      ctx.fillStyle = "rgba(255, 87, 233, 0.85)";
-      ctx.fillRect(-2, 22, 4, 10);
-      ctx.restore();
-    }
-
-    function drawOrbitLines() {
-      ctx.save();
-      ctx.strokeStyle = "rgba(112, 221, 255, 0.16)";
-      ctx.lineWidth = 1.4;
-      ctx.beginPath();
-      ctx.ellipse(270, 266, 148, 84, 0.08, 0.2, Math.PI * 1.82);
-      ctx.stroke();
-      ctx.beginPath();
-      ctx.ellipse(270, 466, 176, 116, -0.05, 0.4, Math.PI * 1.76);
-      ctx.stroke();
-      ctx.beginPath();
-      ctx.ellipse(270, 645, 134, 92, 0.1, 0.15, Math.PI * 1.86);
-      ctx.stroke();
-      ctx.restore();
-    }
-
-    function drawWalls() {
-      ctx.save();
-      ctx.strokeStyle = "rgba(129, 212, 255, 0.74)";
-      ctx.lineWidth = 5;
-      ctx.lineJoin = "round";
+      ctx.lineWidth = 14;
       ctx.lineCap = "round";
+      ctx.strokeStyle = "#2f8ed5";
       ctx.beginPath();
-      for (const wall of walls) {
-        if (wall.helper) {
-          continue;
-        }
-        ctx.moveTo(wall.ax, wall.ay);
-        ctx.lineTo(wall.bx, wall.by);
-      }
+      ctx.moveTo(175, 830);
+      ctx.lineTo(282, 875);
       ctx.stroke();
 
-      ctx.strokeStyle = "rgba(255, 212, 103, 0.24)";
-      ctx.lineWidth = 2;
       ctx.beginPath();
-      for (const wall of walls) {
-        if (wall.helper) {
-          continue;
-        }
-        ctx.moveTo(wall.ax, wall.ay);
-        ctx.lineTo(wall.bx, wall.by);
-      }
+      ctx.moveTo(365, 830);
+      ctx.lineTo(258, 875);
       ctx.stroke();
-      ctx.restore();
-    }
 
-    function drawGates() {
-      for (const gate of gates) {
-        ctx.save();
-        ctx.fillStyle = gate.lit > 0.2 ? "rgba(112, 221, 255, 0.86)" : "rgba(104, 142, 214, 0.34)";
-        ctx.fillRect(gate.x, gate.y, gate.w, gate.h);
-        ctx.strokeStyle = "rgba(236, 245, 255, 0.82)";
-        ctx.strokeRect(gate.x, gate.y, gate.w, gate.h);
-        ctx.fillStyle = "rgba(236, 245, 255, 0.92)";
-        ctx.font = "700 10px Segoe UI";
-        ctx.fillText(gate.text, gate.x + 12, gate.y - 6);
-        ctx.restore();
+      // Sling triangles
+      for (const s of slings) {
+        ctx.fillStyle = "rgba(255, 109, 116, 0.22)";
+        ctx.strokeStyle = "rgba(255, 109, 116, 0.8)";
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.moveTo(s.a.x, s.a.y);
+        ctx.lineTo(s.b.x, s.b.y);
+        ctx.lineTo(s.c.x, s.c.y);
+        ctx.closePath();
+        ctx.fill();
+        ctx.stroke();
       }
+
+      // Drain guide
+      ctx.strokeStyle = "rgba(255, 109, 116, 0.55)";
+      ctx.strokeRect(238, 874, 64, 8);
     }
 
     function drawBumpers() {
-      for (const bumper of bumpers) {
-        ctx.save();
-        const halo = bumper.r + 10 + bumper.pulse * 20;
-        const gradient = ctx.createRadialGradient(bumper.x, bumper.y, bumper.r * 0.2, bumper.x, bumper.y, halo);
-        gradient.addColorStop(0, "rgba(255, 212, 103, 0.95)");
-        gradient.addColorStop(0.45, "rgba(112, 221, 255, 0.85)");
-        gradient.addColorStop(1, "rgba(112, 221, 255, 0)");
-        ctx.fillStyle = gradient;
+      for (const b of bumpers) {
+        const halo = b.r + 12 + b.glow * 16;
+        const g = ctx.createRadialGradient(b.x, b.y, b.r * 0.2, b.x, b.y, halo);
+        g.addColorStop(0, "rgba(255, 212, 103, 0.95)");
+        g.addColorStop(0.5, "rgba(121, 215, 255, 0.75)");
+        g.addColorStop(1, "rgba(121, 215, 255, 0)");
+        ctx.fillStyle = g;
         ctx.beginPath();
-        ctx.arc(bumper.x, bumper.y, halo, 0, Math.PI * 2);
+        ctx.arc(b.x, b.y, halo, 0, Math.PI * 2);
         ctx.fill();
 
-        ctx.fillStyle = "#102459";
-        ctx.beginPath();
-        ctx.arc(bumper.x, bumper.y, bumper.r, 0, Math.PI * 2);
-        ctx.fill();
-        ctx.strokeStyle = "rgba(255, 212, 103, 0.82)";
+        ctx.fillStyle = "#143166";
+        ctx.strokeStyle = "rgba(255, 212, 103, 0.9)";
         ctx.lineWidth = 3;
-        ctx.stroke();
-
-        ctx.fillStyle = "rgba(236, 245, 255, 0.95)";
-        ctx.font = "800 10px Segoe UI";
-        ctx.fillText(bumper.label, bumper.x - ctx.measureText(bumper.label).width / 2, bumper.y + 3);
-        ctx.restore();
-      }
-    }
-
-    function drawBeacons() {
-      for (const beacon of beacons) {
-        ctx.save();
         ctx.beginPath();
-        ctx.fillStyle = beacon.pulse > 0.2 ? "rgba(255, 109, 116, 0.82)" : "rgba(255, 109, 116, 0.32)";
-        ctx.arc(beacon.x, beacon.y, beacon.r + beacon.pulse * 10, 0, Math.PI * 2);
-        ctx.fill();
-        ctx.beginPath();
-        ctx.fillStyle = "rgba(255, 233, 235, 0.9)";
-        ctx.arc(beacon.x, beacon.y, 5, 0, Math.PI * 2);
-        ctx.fill();
-        ctx.restore();
-      }
-    }
-
-    function drawAsteroids() {
-      for (const asteroid of asteroids) {
-        ctx.save();
-        ctx.translate(asteroid.x, asteroid.y);
-        ctx.rotate(asteroid.spin);
-        ctx.shadowColor = "rgba(255, 190, 120, 0.35)";
-        ctx.shadowBlur = 8;
-        ctx.fillStyle = "rgba(124, 112, 103, 0.95)";
-        ctx.strokeStyle = "rgba(201, 180, 154, 0.7)";
-        ctx.lineWidth = 1.6;
-        ctx.beginPath();
-        ctx.moveTo(0, -asteroid.r);
-        ctx.lineTo(asteroid.r * 0.72, -asteroid.r * 0.52);
-        ctx.lineTo(asteroid.r, asteroid.r * 0.2);
-        ctx.lineTo(asteroid.r * 0.45, asteroid.r * 0.9);
-        ctx.lineTo(-asteroid.r * 0.42, asteroid.r * 0.82);
-        ctx.lineTo(-asteroid.r, asteroid.r * 0.14);
-        ctx.lineTo(-asteroid.r * 0.66, -asteroid.r * 0.56);
-        ctx.closePath();
+        ctx.arc(b.x, b.y, b.r, 0, Math.PI * 2);
         ctx.fill();
         ctx.stroke();
-
-        ctx.shadowBlur = 0;
-        ctx.fillStyle = "rgba(89, 80, 74, 0.95)";
-        ctx.beginPath();
-        ctx.arc(-asteroid.r * 0.2, -asteroid.r * 0.08, asteroid.r * 0.18, 0, Math.PI * 2);
-        ctx.fill();
-        ctx.beginPath();
-        ctx.arc(asteroid.r * 0.26, asteroid.r * 0.18, asteroid.r * 0.12, 0, Math.PI * 2);
-        ctx.fill();
-        ctx.restore();
       }
-    }
-
-    function drawParticles() {
-      for (const p of particles) {
-        const alpha = Math.max(0, p.life / p.maxLife);
-        ctx.beginPath();
-        ctx.fillStyle = `rgba(${p.color}, ${alpha})`;
-        ctx.arc(p.x, p.y, p.size * alpha, 0, Math.PI * 2);
-        ctx.fill();
-      }
-    }
-
-    function drawSlings() {
-      for (const sling of slings) {
-        ctx.save();
-        ctx.beginPath();
-        ctx.moveTo(sling.a.x, sling.a.y);
-        ctx.lineTo(sling.b.x, sling.b.y);
-        ctx.lineTo(sling.c.x, sling.c.y);
-        ctx.closePath();
-        ctx.fillStyle = "rgba(255, 109, 116, 0.24)";
-        ctx.strokeStyle = "rgba(255, 109, 116, 0.86)";
-        ctx.lineWidth = 2;
-        ctx.fill();
-        ctx.stroke();
-        ctx.restore();
-      }
-    }
-
-    function drawFlipper(flipper, color) {
-      const x1 = flipper.pivot.x;
-      const y1 = flipper.pivot.y;
-      const angle = flipper.current;
-
-      ctx.save();
-      ctx.translate(x1, y1);
-      ctx.rotate(angle);
-      ctx.fillStyle = color;
-      ctx.strokeStyle = "rgba(250, 252, 255, 0.94)";
-      ctx.lineWidth = 2;
-
-      const width = flipper.width;
-      const length = flipper.length;
-      ctx.beginPath();
-      ctx.moveTo(-width * 0.45, -width * 0.5);
-      ctx.lineTo(length - width * 0.26, -width * 0.5);
-      ctx.quadraticCurveTo(length + width * 0.68, 0, length - width * 0.26, width * 0.5);
-      ctx.lineTo(-width * 0.45, width * 0.5);
-      ctx.quadraticCurveTo(-width, 0, -width * 0.45, -width * 0.5);
-      ctx.fill();
-      ctx.stroke();
-      ctx.restore();
-
-      ctx.beginPath();
-      ctx.fillStyle = "#d8ebff";
-      ctx.arc(x1, y1, 8, 0, Math.PI * 2);
-      ctx.fill();
-    }
-
-    function drawPlunger() {
-      const shaftTop = plunger.y + 12;
-      const knobY = plunger.y + plunger.height - 10 + state.launchPower * 1.6;
-      ctx.save();
-      ctx.fillStyle = "rgba(11, 28, 67, 0.88)";
-      ctx.fillRect(plunger.x, plunger.y, plunger.width, plunger.height);
-      ctx.strokeStyle = "rgba(129, 212, 255, 0.56)";
-      ctx.strokeRect(plunger.x, plunger.y, plunger.width, plunger.height);
-
-      // Plunger shaft and knob
-      ctx.fillStyle = "rgba(241, 251, 255, 0.84)";
-      ctx.fillRect(plunger.x + plunger.width / 2 - 3, shaftTop, 6, knobY - shaftTop);
-
-      ctx.fillStyle = "#ffd467";
-      ctx.beginPath();
-      ctx.arc(plunger.x + plunger.width / 2, knobY, 14, 0, Math.PI * 2);
-      ctx.fill();
-      ctx.strokeStyle = "rgba(255, 255, 255, 0.72)";
-      ctx.stroke();
-
-      // Rocket launcher label
-      ctx.fillStyle = "rgba(112, 221, 255, 0.88)";
-      ctx.font = "700 10px Segoe UI";
-      ctx.save();
-      ctx.translate(plunger.x + plunger.width / 2, plunger.y - 12);
-      ctx.fillText("ROCKET", -18, 0);
-      ctx.restore();
-      ctx.restore();
     }
 
     function drawBall() {
-      for (let i = 0; i < ball.trail.length; i += 1) {
-        const trail = ball.trail[i];
-        const alpha = i / ball.trail.length;
-        ctx.beginPath();
-        ctx.fillStyle = `rgba(112, 221, 255, ${alpha * 0.36})`;
-        ctx.arc(trail.x, trail.y, Math.max(1, ball.r * alpha * 0.92), 0, Math.PI * 2);
-        ctx.fill();
-      }
-
+      const g = ctx.createRadialGradient(ball.x - 3, ball.y - 3, 2, ball.x, ball.y, ball.r * 1.3);
+      g.addColorStop(0, "#ffffff");
+      g.addColorStop(0.6, "#d8ebff");
+      g.addColorStop(1, "#6caee2");
+      ctx.fillStyle = g;
       ctx.beginPath();
-      const gradient = ctx.createRadialGradient(ball.x - 3, ball.y - 3, 2, ball.x, ball.y, ball.r * 1.2);
-      gradient.addColorStop(0, "#ffffff");
-      gradient.addColorStop(0.45, "#d8efff");
-      gradient.addColorStop(1, "#6caee2");
-      ctx.fillStyle = gradient;
       ctx.arc(ball.x, ball.y, ball.r, 0, Math.PI * 2);
       ctx.fill();
-      ctx.strokeStyle = "rgba(255, 255, 255, 0.88)";
+      ctx.strokeStyle = "rgba(255, 255, 255, 0.9)";
+      ctx.lineWidth = 1.5;
       ctx.stroke();
     }
 
-    function drawTextAndMarkers() {
-      ctx.save();
-      const pulse = 0.45 + Math.sin(state.neonTick * 1.8) * 0.25;
-      ctx.font = "800 24px Segoe UI";
-      ctx.fillStyle = `rgba(235, 245, 255, ${0.76 + pulse * 0.25})`;
-      ctx.shadowColor = "rgba(112, 221, 255, 0.65)";
-      ctx.shadowBlur = 15;
-      ctx.fillText("US SPACE FORCE", 150, 58);
-      ctx.font = "600 12px Segoe UI";
-      ctx.fillStyle = "rgba(255, 117, 233, 0.86)";
-      ctx.fillText("ORBITAL FLIGHT COMMAND", 182, 80);
-      ctx.fillText("TOTALLY NORMAL NEON PINBALL", 160, 95);
-      ctx.shadowBlur = 0;
-
-      if (!state.running) {
-        ctx.fillStyle = "rgba(255, 109, 116, 0.96)";
-        ctx.font = "900 42px Segoe UI";
-        ctx.fillText("GAME OVER", 150, 476);
+    function drawPlunger() {
+      if (ball.launched) {
+        return;
       }
-      ctx.restore();
-    }
 
-    function drawBoardArt() {
-      drawNeonGrid();
-      drawStarField();
-      drawLargeTypography();
-      drawShipHull();
-      drawOrbitLines();
-      drawSpaceForceSymbol(104, 152, 1, 0.8);
-      drawSpaceForceSymbol(438, 152, 1, 0.8);
-      drawSpaceForceSymbol(270, 612, 1.2, 0.38);
-      drawCarrier(270, 238, 1, 14);
-      for (const astronaut of astronauts) {
-        drawAstronaut(astronaut);
-      }
-      drawFighter(132, 278, 0.95, -0.26, "rgba(112, 221, 255, 0.72)");
-      drawFighter(408, 278, 0.95, 0.26, "rgba(112, 221, 255, 0.72)");
-      drawFighter(270, 124, 0.78, 0, "rgba(255, 212, 103, 0.76)");
+      const x = 527;
+      const top = 640;
+      const y = 850 - state.launchPower * 1.5;
+
+      ctx.strokeStyle = "rgba(121, 215, 255, 0.85)";
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.moveTo(x, top);
+      ctx.lineTo(x, 860);
+      ctx.stroke();
+
+      ctx.fillStyle = "rgba(255, 212, 103, 0.95)";
+      ctx.beginPath();
+      ctx.arc(x, y, 12, 0, Math.PI * 2);
+      ctx.fill();
     }
 
     function render() {
-      ctx.clearRect(0, 0, board.width, board.height);
-      drawBoardArt();
-      drawWalls();
-      drawGates();
+      ctx.clearRect(0, 0, board.w, board.h);
+      drawBoard();
       drawBumpers();
-      drawBeacons();
-      drawAsteroids();
-      drawSlings();
-      drawFlipper(flippers.left, "#2d79c8");
-      drawFlipper(flippers.right, "#2d79c8");
       drawPlunger();
       drawBall();
-      drawParticles();
-      drawTextAndMarkers();
+
+      if (state.gameOver) {
+        ctx.fillStyle = "rgba(4, 11, 26, 0.7)";
+        ctx.fillRect(0, 0, board.w, board.h);
+        ctx.fillStyle = "#ffd467";
+        ctx.font = "700 44px Segoe UI";
+        ctx.fillText("GAME OVER", 130, 430);
+        ctx.font = "600 18px Segoe UI";
+        ctx.fillStyle = "#e9f5ff";
+        ctx.fillText("Press Enter to restart", 166, 468);
+      }
     }
 
     function updateHud() {
       scoreEl.textContent = String(state.score);
       bestEl.textContent = String(state.best);
       ballsEl.textContent = String(state.balls);
-      multiplierEl.textContent = "x" + state.multiplier.toFixed(1).replace(/\.0$/, "");
-      statusEl.textContent = state.message;
-    }
-
-    function launchBall() {
-      if (!state.running || ball.launched) {
-        return;
-      }
-      ensureAudio();
-      const normalized = state.launchPower / plunger.maxCharge;
-      const impulse = plunger.minPower + (plunger.maxPower - plunger.minPower) * normalized;
-      ball.inShooterLane = true;
-      ball.x = launcher.holdX;
-      ball.y = launcher.holdY;
-      ball.launchAssist = 0;
-      // Launch toward left-downward into the playfield from top-right launcher
-      ball.vx = -impulse * 0.6 - 2.5;
-      ball.vy = impulse * 0.8 + 1.5;
-      ball.launched = true;
-      playTone("sawtooth", 180, 0.15, 0.055, 380);
-      playNoise(0.06, 0.02);
-      state.message = "ROCKET LAUNCH! Aim for the bumpers!";
-      state.charging = false;
     }
 
     function gameLoop() {
@@ -2459,87 +588,39 @@
         return;
       }
 
-      if (event.code === "ArrowLeft") {
+      if (event.code === "Space" && !ball.launched && state.running) {
         event.preventDefault();
+        state.charging = true;
+      }
+
+      if ((event.code === "ArrowLeft" || event.code === "KeyZ") && state.running) {
         state.leftPressed = true;
-        ensureAudio();
-        playTone("square", 320, 0.04, 0.02, 280);
       }
-      if (event.code === "ArrowRight") {
-        event.preventDefault();
+
+      if ((event.code === "ArrowRight" || event.code === "KeyX") && state.running) {
         state.rightPressed = true;
-        ensureAudio();
-        playTone("square", 340, 0.04, 0.02, 300);
       }
-      if (event.code === "Space") {
-        ensureAudio();
-        if (state.running && !ball.launched) {
-          state.charging = true;
-          event.preventDefault();
-        }
-      }
-      if (event.code === "Enter" && state.canRestart) {
+
+      if (event.code === "Enter" && state.gameOver) {
         restartGame();
       }
     });
 
     document.addEventListener("keyup", (event) => {
-      if (event.code === "ArrowLeft") {
-        state.leftPressed = false;
-      }
-      if (event.code === "ArrowRight") {
-        state.rightPressed = false;
-      }
       if (event.code === "Space") {
         launchBall();
       }
-    });
 
-    canvas.addEventListener("pointerdown", (event) => {
-      ensureAudio();
-      if (!ball.launched && state.running) {
-        state.charging = true;
-        return;
+      if (event.code === "ArrowLeft" || event.code === "KeyZ") {
+        state.leftPressed = false;
       }
-      if (event.offsetX < canvas.width * 0.5) {
-        state.leftPressed = true;
-      } else {
-        state.rightPressed = true;
+
+      if (event.code === "ArrowRight" || event.code === "KeyX") {
+        state.rightPressed = false;
       }
     });
 
-    canvas.addEventListener("pointerup", () => {
-      launchBall();
-      state.leftPressed = false;
-      state.rightPressed = false;
-      state.charging = false;
-    });
-
-    canvas.addEventListener("pointerleave", () => {
-      state.leftPressed = false;
-      state.rightPressed = false;
-      state.charging = false;
-    });
-
-    volumeEl.addEventListener("input", () => {
-      audio.volume = Math.max(0, Math.min(1, Number(volumeEl.value) / 100));
-      if (audio.volume > 0) {
-        audio.muted = false;
-      }
-      applyAudioVolume();
-      setAudioUi();
-      ensureAudio();
-    });
-
-    muteButton.addEventListener("click", () => {
-      audio.muted = !audio.muted;
-      applyAudioVolume();
-      setAudioUi();
-      ensureAudio();
-    });
-
-    setAudioUi();
-    resetBall();
+    bestEl.textContent = String(state.best);
     gameLoop();
   </script>
 </body>
